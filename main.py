@@ -29,7 +29,7 @@ if BOT_TOKEN:
 
 # Database Connection
 client = MongoClient(MONGO_URI)
-db = client['mega_earning_v21']
+db = client['mega_earning_v22'] # New Version
 users_collection = db['users']
 settings_collection = db['settings']
 withdraws_collection = db['withdrawals']
@@ -39,13 +39,13 @@ def get_settings():
     if not setts:
         default = {
             "id": "config",
-            "ad_count_per_click": 1,
+            "ad_count_per_click": 2, # ডিফল্ট ২ টি এড
             "ad_rate": 0.50,
             "ref_commission": 2.00,
             "min_withdraw": 10.00,
             "max_withdraw": 1000.00,
-            "min_recharge": 20.00, # মোবাইল রিচার্জের সর্বনিম্ন সীমা
-            "recharge_on": True,   # রিচার্জ সিস্টেম অন/অফ
+            "min_recharge": 20.00,
+            "recharge_on": True,
             "daily_ad_limit": 50,
             "reset_hours": 24,
             "reset_minutes": 0,
@@ -80,13 +80,14 @@ if bot:
         markup.add(telebot.types.InlineKeyboardButton(text="🚀 ওপেন ড্যাশবোর্ড", url=dashboard_url))
         bot.send_message(message.chat.id, f"👋 স্বাগতম {name}!\n💰 এড দেখে আয় শুরু করতে নিচের বাটনে ক্লিক করুন।", reply_markup=markup)
 
-# --- USER DASHBOARD (PREMIUM UI WITH RECHARGE) ---
+# --- USER DASHBOARD (SEQUENTIAL AD FIX) ---
 USER_DASHBOARD = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Earn Pro | Dashboard</title>
+    <!-- Monetag SDK -->
     <script src='//libtl.com/sdk.js' data-zone='{{ config.zone_id }}' data-sdk='show_{{ config.zone_id }}'></script>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
@@ -101,11 +102,8 @@ USER_DASHBOARD = """
         .btn { width: 100%; padding: 16px; border: none; border-radius: 16px; font-size: 16px; font-weight: 600; cursor: pointer; margin-bottom: 12px; color: white; transition: 0.2s; }
         .btn-work { background: var(--primary); box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4); }
         .btn-withdraw { background: #475569; }
-        .btn-recharge { background: var(--recharge); box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4); }
-        
-        .modal { display: none; position: fixed; z-index: 10; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); }
-        .modal-content { background: var(--card); margin: 15% auto; padding: 25px; width: 85%; max-width: 400px; border-radius: 20px; text-align: left; }
-        input, select { width: 100%; padding: 12px; margin: 10px 0; border-radius: 10px; border: 1px solid #334155; background: #0f172a; color: white; box-sizing: border-box; }
+        .btn-recharge { background: var(--recharge); }
+        #timer { color: var(--accent); font-weight: bold; }
     </style>
 </head>
 <body>
@@ -122,85 +120,98 @@ USER_DASHBOARD = """
                 <div class="stat-item"><b>{{ user.ref_count }}</b><br>Refers</div>
                 <div class="stat-item"><b id="daily_left">{{ config.daily_ad_limit - user.daily_views }}</b><br>Ads Left</div>
             </div>
-            <button class="btn btn-work" onclick="startWork()">WATCH ADS ({{ config.ad_count_per_click }})</button>
+            <button class="btn btn-work" id="workBtn" onclick="startWork()">WATCH ADS ({{ config.ad_count_per_click }})</button>
             <button class="btn btn-withdraw" onclick="document.getElementById('withdrawModal').style.display='block'">WITHDRAWAL</button>
-            
-            {% if config.recharge_on %}
-            <button class="btn btn-recharge" onclick="document.getElementById('rechargeModal').style.display='block'">MOBILE RECHARGE</button>
-            {% endif %}
-
-            <p style="font-size:10px; color:#94a3b8; margin-top:10px;">Next Reset In: <span id="timer">--:--:--</span></p>
+            {% if config.recharge_on %}<button class="btn btn-recharge" onclick="document.getElementById('rechargeModal').style.display='block'">RECHARGE</button>{% endif %}
+            <p style="font-size:10px; color:#94a3b8; margin-top:10px;">Reset In: <span id="timer">--:--:--</span></p>
         </div>
     </div>
 
-    <!-- Withdraw Modal -->
-    <div id="withdrawModal" class="modal">
-        <div class="modal-content">
-            <h3 style="margin:0;">Withdrawal</h3>
-            <select id="w_method">{% for m in config.withdraw_methods %}<option value="{{m}}">{{m}}</option>{% endfor %}</select>
-            <input type="number" id="w_amount" placeholder="Amount (Min ৳{{config.min_withdraw}})">
-            <input type="text" id="w_account" placeholder="Wallet Number">
-            <button class="btn btn-work" onclick="submitRequest('Withdraw', 'w_method', 'w_amount', 'w_account')">Confirm</button>
-            <button class="btn" onclick="document.getElementById('withdrawModal').style.display='none'" style="background:transparent; margin:0;">Cancel</button>
+    <!-- Modals (Withdraw/Recharge) -->
+    <div id="withdrawModal" style="display:none; position:fixed; z-index:100; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8);">
+        <div style="background:var(--card); margin:15% auto; padding:25px; width:85%; max-width:400px; border-radius:20px;">
+            <h3>Withdraw</h3>
+            <select id="w_method" style="width:100%; padding:10px; margin-bottom:10px;">{% for m in config.withdraw_methods %}<option value="{{m}}">{{m}}</option>{% endfor %}</select>
+            <input type="number" id="w_amount" placeholder="Amount" style="width:100%; padding:10px; margin-bottom:10px;">
+            <input type="text" id="w_account" placeholder="Wallet Number" style="width:100%; padding:10px; margin-bottom:10px;">
+            <button class="btn btn-work" onclick="submitReq('Withdraw')">Confirm</button>
+            <button class="btn" onclick="document.getElementById('withdrawModal').style.display='none'">Cancel</button>
         </div>
     </div>
 
-    <!-- Recharge Modal -->
-    <div id="rechargeModal" class="modal">
-        <div class="modal-content">
-            <h3 style="margin:0;">Mobile Recharge</h3>
-            <select id="r_operator">
-                <option value="Grameenphone">Grameenphone</option>
-                <option value="Banglalink">Banglalink</option>
-                <option value="Robi">Robi</option>
-                <option value="Airtel">Airtel</option>
-                <option value="Teletalk">Teletalk</option>
-            </select>
-            <input type="number" id="r_amount" placeholder="Amount (Min ৳{{config.min_recharge}})">
-            <input type="text" id="r_number" placeholder="Mobile Number">
-            <button class="btn btn-recharge" onclick="submitRequest('Recharge', 'r_operator', 'r_amount', 'r_number')">Confirm Recharge</button>
-            <button class="btn" onclick="document.getElementById('rechargeModal').style.display='none'" style="background:transparent; margin:0;">Cancel</button>
+    <div id="rechargeModal" style="display:none; position:fixed; z-index:100; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8);">
+        <div style="background:var(--card); margin:15% auto; padding:25px; width:85%; max-width:400px; border-radius:20px;">
+            <h3>Recharge</h3>
+            <select id="r_operator" style="width:100%; padding:10px; margin-bottom:10px;"><option>GP</option><option>Robi</option><option>Banglalink</option><option>Airtel</option><option>Teletalk</option></select>
+            <input type="number" id="r_amount" placeholder="Amount (Min ৳{{config.min_recharge}})" style="width:100%; padding:10px; margin-bottom:10px;">
+            <input type="text" id="r_number" placeholder="Number" style="width:100%; padding:10px; margin-bottom:10px;">
+            <button class="btn btn-work" onclick="submitReq('Recharge')">Confirm</button>
+            <button class="btn" onclick="document.getElementById('rechargeModal').style.display='none'">Cancel</button>
         </div>
     </div>
 
     <script>
     function startWork() {
         let left = parseInt(document.getElementById('daily_left').innerText);
-        if(left <= 0) return alert("লিমিট শেষ!");
+        if(left <= 0) return alert("Daily limit reached!");
+        
         let zid = "{{ config.zone_id }}";
-        if(typeof window['show_'+zid] === 'function') {
-            for(let i=0; i< {{config.ad_count_per_click}}; i++){ 
-                setTimeout(() => { window['show_'+zid](); }, i * 2500);
-            }
-            fetch('/update_balance', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user_id:"{{user.user_id}}"})})
-            .then(res=>res.json()).then(data=> {
-                if(data.success) {
-                    document.getElementById('bal').innerText = data.new_balance.toFixed(2);
-                    document.getElementById('daily_left').innerText = data.daily_left;
+        let adsPerClick = {{ config.ad_count_per_click }};
+        
+        if (typeof window['show_'+zid] === 'function') {
+            document.getElementById('workBtn').disabled = true;
+            document.getElementById('workBtn').innerText = "Ad Loading...";
+            
+            // অটোমেটিক পর পর এড দেখানোর সিস্টেম
+            let adsShown = 0;
+            let interval = setInterval(() => {
+                if (adsShown < adsPerClick) {
+                    window['show_'+zid]();
+                    adsShown++;
+                } else {
+                    clearInterval(interval);
+                    updateBalance();
                 }
-            });
+            }, 3000); // প্রতি ৩ সেকেন্ড পর পর একটি করে এড আসবে
+        } else {
+            alert("Ads Failed to Load. Disable AdBlocker.");
         }
     }
 
-    function submitRequest(type, methodId, amountId, accountId) {
-        let method = document.getElementById(methodId).value;
-        let amt = parseFloat(document.getElementById(amountId).value);
-        let acc = document.getElementById(accountId).value;
-        
-        let min = (type === 'Recharge') ? {{config.min_recharge}} : {{config.min_withdraw}};
-        if(amt < min) return alert("Minimum " + type + " is ৳" + min);
-        if(!acc) return alert("Please enter number");
+    function updateBalance() {
+        fetch('/update_balance', {
+            method:'POST', headers:{'Content-Type':'application/json'}, 
+            body:JSON.stringify({user_id:"{{user.user_id}}"})
+        }).then(res=>res.json()).then(data=> {
+            document.getElementById('workBtn').disabled = false;
+            document.getElementById('workBtn').innerText = "WATCH ADS ({{ config.ad_count_per_click }})";
+            if(data.success) {
+                document.getElementById('bal').innerText = data.new_balance.toFixed(2);
+                document.getElementById('daily_left').innerText = data.daily_left;
+            }
+        });
+    }
 
+    function submitReq(type) {
+        let amt, acc, method;
+        if(type === 'Withdraw') {
+            amt = document.getElementById('w_amount').value;
+            acc = document.getElementById('w_account').value;
+            method = document.getElementById('w_method').value;
+        } else {
+            amt = document.getElementById('r_amount').value;
+            acc = document.getElementById('r_number').value;
+            method = document.getElementById('r_operator').value;
+        }
         fetch('/request_payment', {
-            method:'POST', 
-            headers:{'Content-Type':'application/json'}, 
-            body:JSON.stringify({user_id:"{{user.user_id}}", amount:amt, account:acc, method:method, type:type})
+            method:'POST', headers:{'Content-Type':'application/json'}, 
+            body:JSON.stringify({user_id:"{{user.user_id}}", amount:parseFloat(amt), account:acc, method:method, type:type})
         }).then(res=>res.json()).then(data=>{ alert(data.message); location.reload(); });
     }
 
     function updateTimer() {
-        const nextReset = new Date("{{ next_reset }}").getTime();
-        const diff = nextReset - new Date().getTime();
+        const next = new Date("{{ next_reset }}").getTime();
+        const diff = next - new Date().getTime();
         if (diff <= 0) { location.reload(); return; }
         const h = Math.floor((diff % 86400000) / 3600000);
         const m = Math.floor((diff % 3600000) / 60000);
@@ -213,65 +224,51 @@ USER_DASHBOARD = """
 </html>
 """
 
-# --- VIBRANT ADMIN PANEL ---
+# --- VIBRANT ADMIN PANEL (SETTINGS FIX) ---
 ADMIN_PANEL = """
 <!DOCTYPE html>
 <html>
 <head>
     <title>Master Admin</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: white; padding: 20px; }
+        body { font-family: sans-serif; background: #0f172a; color: white; padding: 20px; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
         .card { background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; margin-bottom: 20px; }
-        input, select, textarea { width: 100%; padding: 10px; margin: 8px 0; border-radius: 8px; background: #0f172a; color: white; border: 1px solid #334155; box-sizing: border-box; }
+        input, textarea, select { width: 100%; padding: 10px; margin: 8px 0; border-radius: 5px; background: #0f172a; color: white; border: 1px solid #334155; box-sizing: border-box; }
         button { background: #10b981; color: white; border: none; padding: 12px; width: 100%; border-radius: 8px; cursor: pointer; font-weight: bold; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
         th, td { padding: 10px; border-bottom: 1px solid #334155; text-align: left; }
     </style>
 </head>
 <body>
-    <h1 style="text-align:center; color:#818cf8;">👑 Admin Control Panel</h1>
+    <h1 style="text-align:center; color:#818cf8;">👑 मास्टर কন্ট্রোল প্যানেল</h1>
     <div class="grid">
         <div class="card">
             <h3>⚙️ App Settings</h3>
             <form method="post">
                 Notice: <textarea name="notice">{{config.notice}}</textarea>
                 Ad Rate: <input name="ad_rate" step="0.01" value="{{config.ad_rate}}">
+                <b>Ads Per Click (Sequential):</b> <input name="ad_count_per_click" type="number" value="{{config.ad_count_per_click}}">
                 Daily Limit: <input name="daily_ad_limit" type="number" value="{{config.daily_ad_limit}}">
+                Reset Time (Hours): <input name="reset_hours" type="number" value="{{config.reset_hours}}">
+                <b>Monetag Zone ID:</b> <input name="zone_id" value="{{config.zone_id}}">
                 Min Withdraw: <input name="min_withdraw" value="{{config.min_withdraw}}">
                 Min Recharge: <input name="min_recharge" value="{{config.min_recharge}}">
-                Recharge Status: <select name="recharge_on">
-                    <option value="on" {% if config.recharge_on %}selected{% endif %}>ON</option>
-                    <option value="off" {% if not config.recharge_on %}selected{% endif %}>OFF</option>
-                </select>
                 Withdraw Methods: <input name="withdraw_methods" value="{{ config.withdraw_methods|join(', ') }}">
-                Zone ID: <input name="zone_id" value="{{config.zone_id}}">
                 <button type="submit">Save All Settings</button>
             </form>
         </div>
-
         <div class="card">
-            <h3>💰 Pending Requests (Withdraw & Recharge)</h3>
-            <div style="overflow-y: auto; max-height: 400px;">
-                <table>
-                    <tr><th>User</th><th>Type</th><th>Amount</th><th>Number</th><th>Action</th></tr>
-                    {% for w in withdraws %}
-                    <tr>
-                        <td>{{w.name}}</td>
-                        <td style="color:{% if w.type == 'Recharge' %}#8b5cf6{% else %}#f59e0b{% endif %}">{{w.type}}</td>
-                        <td>৳{{w.amount}}</td>
-                        <td>{{w.account}}</td>
-                        <td><a href="/admin/pay/{{w._id}}" style="color:#ef4444;">Paid</a></td>
-                    </tr>
-                    {% endfor %}
-                </table>
-            </div>
+            <h3>💰 Pending Requests</h3>
+            <table>
+                {% for w in withdraws %}
+                <tr><td>{{w.name}}<br><small>{{w.type}} - {{w.account}}</small></td><td>৳{{w.amount}}</td><td><a href="/admin/pay/{{w._id}}" style="color:#ef4444;">Paid</a></td></tr>
+                {% endfor %}
+            </table>
         </div>
     </div>
-    
     <div class="card">
-        <h3>👥 User Management</h3>
+        <h3>👥 User Manager</h3>
         <div style="overflow-x:auto;">
             <table width="100%">
                 <tr><th>Name/ID</th><th>Balance</th><th>Action</th></tr>
@@ -291,11 +288,11 @@ ADMIN_PANEL = """
 </html>
 """
 
-# --- ROUTES ---
+# --- BACKEND ROUTES ---
 @app.route('/')
 def home():
     user_id, name, ref_by = request.args.get('id'), request.args.get('name', 'User'), request.args.get('ref')
-    if not user_id: return "<h1>Join via Bot first!</h1>", 403
+    if not user_id: return "<h1>Access via Telegram Bot!</h1>", 403
     
     config = get_settings()
     user = users_collection.find_one({"user_id": user_id})
@@ -310,7 +307,7 @@ def home():
             users_collection.update_one({"user_id": ref_by}, {"$inc": {"balance": config['ref_commission'], "ref_count": 1}})
         user = user_data
     
-    # Auto Reset Logic
+    # Auto Reset Check
     last_reset = user.get('last_reset_time', now)
     next_reset = last_reset + reset_delta
     if now >= next_reset:
@@ -327,26 +324,20 @@ def update_balance():
     user = users_collection.find_one({"user_id": uid})
     if user['daily_views'] >= config['daily_ad_limit']: return jsonify({"success": False, "message": "Limit Reached!"})
     users_collection.update_one({"user_id": uid}, {"$inc": {"balance": config['ad_rate'], "daily_views": 1}})
-    return jsonify({"success": True, "new_balance": user['balance'] + config['ad_rate'], "daily_left": config['daily_ad_limit'] - (user['daily_views'] + 1)})
+    u = users_collection.find_one({"user_id": uid})
+    return jsonify({"success": True, "new_balance": u['balance'], "daily_left": config['daily_ad_limit'] - u['daily_views']})
 
 @app.route('/request_payment', methods=['POST'])
 def request_payment():
     data = request.json
     config = get_settings()
     user = users_collection.find_one({"user_id": data['user_id']})
-    
     min_amt = config['min_recharge'] if data['type'] == 'Recharge' else config['min_withdraw']
-    
     if data['amount'] < min_amt or user['balance'] < data['amount']:
         return jsonify({"success": False, "message": "Check Balance or Limit!"})
-    
     users_collection.update_one({"user_id": data['user_id']}, {"$inc": {"balance": -data['amount']}})
-    withdraws_collection.insert_one({
-        "user_id": data['user_id'], "name": user['name'], "amount": data['amount'], 
-        "account": data['account'], "method": data['method'], "type": data['type'], 
-        "status": "Pending", "date": datetime.now()
-    })
-    return jsonify({"success": True, "message": data['type'] + " Requested Successfully!"})
+    withdraws_collection.insert_one({"user_id": data['user_id'], "name": user['name'], "amount": data['amount'], "account": data['account'], "method": data['method'], "type": data['type'], "status": "Pending", "date": datetime.now()})
+    return jsonify({"success": True, "message": "Requested Successfully!"})
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
@@ -356,19 +347,20 @@ def admin():
             settings_collection.update_one({"id": "config"}, {"$set": {
                 "notice": request.form.get('notice'),
                 "ad_rate": float(request.form.get('ad_rate')),
+                "ad_count_per_click": int(request.form.get('ad_count_per_click')),
                 "min_withdraw": float(request.form.get('min_withdraw')),
                 "min_recharge": float(request.form.get('min_recharge')),
-                "recharge_on": True if request.form.get('recharge_on') == 'on' else False,
                 "daily_ad_limit": int(request.form.get('daily_ad_limit')),
+                "reset_hours": int(request.form.get('reset_hours')),
                 "withdraw_methods": [m.strip() for m in request.form.get('withdraw_methods').split(',')],
                 "zone_id": request.form.get('zone_id')
             }})
             return redirect(url_for('admin'))
-        except: return "Error saving settings!"
+        except: return "Error saving data!"
     elif request.method == 'POST' and request.form.get('pass') == ADMIN_PASSWORD_ENV:
         session['logged'] = True
         return redirect(url_for('admin'))
-    if not session.get('logged'): return '<body style="background:#0f172a;color:white;text-align:center;padding:100px;"><form method="post"><h2>Login</h2><input name="pass" type="password"><button>Login</button></form></body>'
+    if not session.get('logged'): return '<body style="background:#0f172a;color:white;text-align:center;padding:100px;"><form method="post"><h2>Admin</h2><input name="pass" type="password"><button>Login</button></form></body>'
     users = list(users_collection.find().limit(50))
     withdraws = list(withdraws_collection.find({"status": "Pending"}))
     return render_template_string(ADMIN_PANEL, config=config, users=users, withdraws=withdraws)
