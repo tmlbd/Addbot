@@ -8,16 +8,22 @@ from datetime import datetime
 from bson.objectid import ObjectId
 
 app = Flask(__name__)
-app.secret_key = "final_secure_earning_v8_2025"
+# SECRET_KEY কোডের ভেতরেই দিয়ে দেওয়া হলো
+app.secret_key = "ULTIMATE_EARN_PRO_VERSION_FINAL_2025"
 
 # --- MongoDB Configuration ---
-# আপনার MongoDB Connection String এখানে দিন
-MONGO_URI = "your_mongodb_connection_string_here" 
-client = MongoClient(MONGO_URI)
-db = client['ad_earning_final_db']
-users_collection = db['users']
-settings_collection = db['settings']
-withdraws_collection = db['withdrawals']
+# এখানে আপনার নিজের MongoDB Connection URI বসান
+MONGO_URI = "আপনার_মোঙ্গোডিবি_লিঙ্ক_এখানে_দিন" 
+
+try:
+    client = MongoClient(MONGO_URI)
+    db = client['earning_v9_final_db']
+    users_collection = db['users']
+    settings_collection = db['settings']
+    withdraws_collection = db['withdrawals']
+    print("Database Connected Successfully!")
+except Exception as e:
+    print(f"Database Connection Error: {e}")
 
 # সেটিংস লোড বা ডিফল্ট তৈরি
 def get_settings():
@@ -31,32 +37,57 @@ def get_settings():
             "min_withdraw": 10.00,
             "max_withdraw": 1000.00,
             "withdraw_methods": ["Bkash", "Nagad", "Rocket"],
-            "notice": "স্বাগতম! কাজ শুরু করতে WATCH ADS বাটনে ক্লিক করুন।",
+            "notice": "সঠিক ভিপিএন কানেক্ট করে কাজ শুরু করুন।",
             "admin_pass": "admin123", 
             "zone_id": "10341337",
-            "app_url": "" # রেন্ডার ইউআরএল এখানে অটো সেভ হবে
+            "vpn_on": False,
+            "allowed_countries": "US,GB,CA",
+            "app_url": "" 
         }
         settings_collection.insert_one(default)
         return default
     return setts
 
+# আইপি ও ভিপিএন চেক করার ফাংশন
+def check_vpn_status(ip):
+    try:
+        response = requests.get(f"http://ip-api.com/json/{ip}?fields=status,countryCode,proxy,hosting", timeout=5).json()
+        if response.get('status') == 'success':
+            return {
+                "country": response.get('countryCode'),
+                "is_vpn": response.get('proxy') or response.get('hosting')
+            }
+    except: pass
+    return {"country": "Unknown", "is_vpn": False}
+
 def get_user_ip():
     return request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0]
 
-# --- ১. সাইট সজাগ রাখার সিস্টেম (Self-Ping Logic) ---
+# সাইট সজাগ রাখার সিস্টেম
 def keep_alive():
     while True:
         try:
             config = get_settings()
-            url = config.get('app_url')
-            if url:
-                requests.get(url)
-                print(f"[{datetime.now()}] Ping sent to {url} - Status: Active")
-        except Exception as e:
-            print(f"Ping Error: {e}")
-        time.sleep(600) # প্রতি ১০ মিনিট (৬০০ সেকেন্ড) পর পর পিং করবে
+            if config.get('app_url'):
+                requests.get(config.get('app_url'), timeout=10)
+        except: pass
+        time.sleep(600)
 
-# --- HTML Template ---
+# --- HTML Templates ---
+
+# ১. ভিপিএন এরর পেজ
+VPN_ERROR_PAGE = """
+<body style="background:#0f172a; color:white; font-family:sans-serif; text-align:center; padding-top:100px;">
+    <div style="background:#1e293b; display:inline-block; padding:30px; border-radius:15px; border:2px solid #ef4444;">
+        <h1 style="color:#ef4444;">VPN Required! ❌</h1>
+        <p>{{ message }}</p>
+        <p>Allowed: <b>{{ countries }}</b></p>
+        <button onclick="location.reload()" style="padding:10px 20px; background:#3b82f6; color:white; border:none; border-radius:5px; cursor:pointer;">Refresh</button>
+    </div>
+</body>
+"""
+
+# ২. মেইন ড্যাশবোর্ড
 USER_DASHBOARD = """
 <!DOCTYPE html>
 <html lang="en">
@@ -66,85 +97,60 @@ USER_DASHBOARD = """
     <title>Earn Pro | Dashboard</title>
     <script src='//libtl.com/sdk.js' data-zone='{{ config.zone_id }}' data-sdk='show_{{ config.zone_id }}'></script>
     <style>
-        body { font-family: 'Poppins', sans-serif; background: #0f172a; color: white; margin: 0; padding: 0; }
-        .notice-bar { background: #f59e0b; color: #000; padding: 10px; font-size: 13px; font-weight: bold; text-align: center; }
-        .container { max-width: 480px; margin: 0 auto; padding: 15px; }
-        .card { background: #1e293b; border-radius: 20px; padding: 25px; box-shadow: 0 10px 25px rgba(0,0,0,0.4); text-align: center; }
-        .balance-card { background: linear-gradient(135deg, #3b82f6, #2563eb); border-radius: 15px; padding: 20px; margin: 15px 0; }
-        .btn-work { background: #10b981; color: white; border: none; width: 100%; padding: 15px; border-radius: 12px; font-size: 18px; font-weight: bold; cursor: pointer; margin-bottom: 10px; }
-        .btn-withdraw { background: #f59e0b; color: white; border: none; width: 100%; padding: 15px; border-radius: 12px; font-size: 18px; font-weight: bold; cursor: pointer; }
-        .ref-box { background: #020617; padding: 12px; border-radius: 10px; margin-top: 15px; font-size: 11px; text-align: left; word-break: break-all; color: #94a3b8; }
-        
-        #withdrawModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; }
-        .modal-content { background: #1e293b; margin: 10% auto; padding: 20px; width: 85%; max-width: 380px; border-radius: 15px; }
-        input, select { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; border: none; background: #334155; color: white; box-sizing: border-box; }
+        body { font-family: 'Poppins', sans-serif; background: #0f172a; color: white; margin: 0; }
+        .notice { background: #f59e0b; color: #000; padding: 12px; font-size: 13px; font-weight: bold; text-align: center; border-bottom: 2px solid white; }
+        .container { max-width: 450px; margin: 0 auto; padding: 15px; }
+        .card { background: #1e293b; border-radius: 20px; padding: 25px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
+        .balance-box { background: linear-gradient(135deg, #10b981, #059669); border-radius: 15px; padding: 20px; margin: 15px 0; }
+        .btn { width: 100%; padding: 16px; border: none; border-radius: 12px; font-size: 18px; font-weight: bold; cursor: pointer; margin-bottom: 12px; }
+        .btn-work { background: #3b82f6; color: white; }
+        .btn-withdraw { background: #f59e0b; color: white; }
+        .ref-link { background: #020617; padding: 10px; border-radius: 8px; margin-top: 20px; font-size: 11px; word-break: break-all; color: #60a5fa; }
     </style>
 </head>
 <body>
-    <div class="notice-bar">📢 {{ config.notice }}</div>
+    <div class="notice">📢 {{ config.notice }}</div>
     <div class="container">
         <div class="card">
-            <img src="https://ui-avatars.com/api/?name={{ user.name }}&background=3b82f6&color=fff" style="width:70px; border-radius:50%; border:3px solid #3b82f6;">
+            <img src="https://ui-avatars.com/api/?name={{ user.name }}&background=3b82f6&color=fff" style="width:75px; border-radius:50%;">
             <h3>{{ user.name }}</h3>
-            <p style="font-size:12px; color:#94a3b8; margin-top:-10px;">ID: {{ user.user_id }}</p>
-            
-            <div class="balance-card">
+            <div class="balance-box">
                 <small>Current Balance</small>
-                <div style="font-size: 32px; font-weight: bold;">৳ <span id="balance_val">{{ "%.2f"|format(user.balance) }}</span></div>
+                <div style="font-size: 34px; font-weight: bold;">৳ <span id="bal">{{ "%.2f"|format(user.balance) }}</span></div>
             </div>
-
-            <button class="btn-work" onclick="startWork()">WATCH ADS & EARN</button>
-            <button class="btn-withdraw" onclick="openWithdraw()">WITHDRAW</button>
-
-            <div style="margin-top: 20px; text-align: left; font-size: 13px;">
-                <p>👥 Total Refers: {{ user.ref_count }}</p>
-                <p>💰 Limit: ৳{{ config.min_withdraw }} - ৳{{ config.max_withdraw }}</p>
+            <button class="btn btn-work" onclick="startWork()">WATCH ADS</button>
+            <button class="btn btn-withdraw" onclick="openW()">WITHDRAW</button>
+            <div style="font-size: 12px; color: #94a3b8; text-align: left; margin-top:15px;">
+                ID: {{ user.user_id }} | Refers: {{ user.ref_count }}<br>
+                Limit: ৳{{ config.min_withdraw }} - ৳{{ config.max_withdraw }}
             </div>
-            <div class="ref-box">🔗 Ref Link: {{ ref_url }}</div>
+            <div class="ref-link">{{ ref_url }}</div>
         </div>
     </div>
-
-    <!-- Withdrawal Modal -->
-    <div id="withdrawModal">
-        <div class="modal-content">
-            <h3 style="margin-top:0;">Request Money</h3>
-            <select id="w_method">
-                {% for m in config.withdraw_methods %} <option value="{{ m }}">{{ m }}</option> {% endfor %}
-            </select>
-            <input type="number" id="w_amount" placeholder="Amount (৳)">
-            <input type="text" id="w_account" placeholder="Wallet Number">
-            <button onclick="submitWithdraw()" style="background:#10b981; color:white; width:100%; padding:12px; border:none; border-radius:8px; font-weight:bold;">Submit</button>
-            <button onclick="closeWithdraw()" style="background:none; color:#94a3b8; width:100%; border:none; margin-top:10px;">Cancel</button>
-        </div>
-    </div>
-
     <script>
     function startWork() {
-        let zone = "{{ config.zone_id }}";
-        if (typeof window['show_' + zone] === 'function') {
-            for (let i = 0; i < {{ config.ad_count }}; i++) { window['show_' + zone](); }
-            updateBalance();
-        } else { alert("Disable AdBlocker!"); }
+        let zid = "{{ config.zone_id }}";
+        if (typeof window['show_' + zid] === 'function') {
+            for (let i = 0; i < {{ config.ad_count }}; i++) { window['show_' + zid](); }
+            fetch('/update_balance', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ user_id: "{{ user.user_id }}" })
+            }).then(res => res.json()).then(data => {
+                if(data.success) document.getElementById('bal').innerText = data.new_balance.toFixed(2);
+            });
+        } else { alert("AdBlocker detected! Please disable it."); }
     }
-    function updateBalance() {
-        fetch('/update_balance', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ user_id: "{{ user.user_id }}" })
-        }).then(res => res.json()).then(data => {
-            if(data.success) document.getElementById('balance_val').innerText = data.new_balance.toFixed(2);
-        });
-    }
-    function openWithdraw() { document.getElementById('withdrawModal').style.display = 'block'; }
-    function closeWithdraw() { document.getElementById('withdrawModal').style.display = 'none'; }
-    function submitWithdraw() {
-        let amt = parseFloat(document.getElementById('w_amount').value);
-        if(amt < {{ config.min_withdraw }} || amt > {{ config.max_withdraw }}) return alert("Out of Limit!");
-        fetch('/request_withdraw', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ user_id: "{{ user.user_id }}", method: document.getElementById('w_method').value, amount: amt, account: document.getElementById('w_account').value })
-        }).then(res => res.json()).then(data => { alert(data.message); if(data.success) location.reload(); });
+    function openW() { 
+        let amt = prompt("টাকার পরিমাণ লিখুন:");
+        let acc = prompt("বিকাশ/নগদ নাম্বার লিখুন:");
+        if(amt && acc) {
+            fetch('/request_withdraw', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ user_id: "{{ user.user_id }}", amount: parseFloat(amt), account: acc })
+            }).then(res => res.json()).then(data => alert(data.message));
+        }
     }
     </script>
 </body>
@@ -159,13 +165,20 @@ def home():
     if not user_id: return "Access via Bot only!"
     
     config = get_settings()
-    # প্রথমবার ঢুকলে অ্যাপ ইউআরএল সেভ করা (সজাগ রাখার জন্য)
+    ip = get_user_ip()
+    ip_info = check_vpn_status(ip)
+    
+    # VPN চেক (যদি এডমিন থেকে অন থাকে)
+    if config['vpn_on']:
+        allowed = [c.strip() for c in config['allowed_countries'].split(',')]
+        if ip_info['country'] not in allowed:
+            return render_template_string(VPN_ERROR_PAGE, message="সঠিক দেশের ভিপিএন কানেক্ট করুন!", countries=config['allowed_countries'])
+
     if not config.get('app_url'):
         settings_collection.update_one({"id": "config"}, {"$set": {"app_url": request.host_url}})
 
     user = users_collection.find_one({"user_id": user_id})
     if not user:
-        ip = get_user_ip()
         ip_exists = users_collection.find_one({"ip_address": ip})
         user_data = {"user_id": user_id, "name": name, "balance": 0.0, "ref_count": 0, "ip_address": ip, "referred_by": ref_by, "created_at": datetime.now()}
         users_collection.insert_one(user_data)
@@ -190,14 +203,11 @@ def request_withdraw():
     config = get_settings()
     user = users_collection.find_one({"user_id": data['user_id']})
     if data['amount'] < config['min_withdraw'] or data['amount'] > config['max_withdraw'] or user['balance'] < data['amount']:
-        return jsonify({"success": False, "message": "Invalid Request!"})
+        return jsonify({"success": False, "message": "Invalid Balance or Limit!"})
     
     users_collection.update_one({"user_id": data['user_id']}, {"$inc": {"balance": -data['amount']}})
-    withdraws_collection.insert_one({
-        "user_id": data['user_id'], "name": user['name'], "amount": data['amount'], 
-        "method": data['method'], "account": data['account'], "status": "Pending", "date": datetime.now()
-    })
-    return jsonify({"success": True, "message": "Withdrawal request sent!"})
+    withdraws_collection.insert_one({"user_id": data['user_id'], "name": user['name'], "amount": data['amount'], "account": data['account'], "status": "Pending", "date": datetime.now()})
+    return jsonify({"success": True, "message": "Withdraw Request Sent Successfully!"})
 
 # --- Admin Panel ---
 
@@ -206,11 +216,18 @@ def admin():
     config = get_settings()
     if request.method == 'POST':
         if session.get('logged'):
-            methods = [m.strip() for m in request.form.get('methods').split(',')]
+            # সেটিংস ও ভিপিএন আপডেট
+            vpn_status = True if request.form.get('vpn_on') == 'on' else False
             settings_collection.update_one({"id": "config"}, {"$set": {
-                "ad_rate": float(request.form.get('ad_rate')), "ref_commission": float(request.form.get('ref_commission')),
-                "min_withdraw": float(request.form.get('min_withdraw')), "max_withdraw": float(request.form.get('max_withdraw')),
-                "withdraw_methods": methods, "notice": request.form.get('notice'), "ad_count": int(request.form.get('ad_count'))
+                "ad_rate": float(request.form.get('ad_rate')), 
+                "ref_commission": float(request.form.get('ref_commission')),
+                "min_withdraw": float(request.form.get('min_withdraw')), 
+                "max_withdraw": float(request.form.get('max_withdraw')),
+                "notice": request.form.get('notice'), 
+                "ad_count": int(request.form.get('ad_count')),
+                "zone_id": request.form.get('zone_id'),
+                "vpn_on": vpn_status,
+                "allowed_countries": request.form.get('allowed_countries')
             }})
             return redirect(url_for('admin'))
         elif request.form.get('pass') == config['admin_pass']:
@@ -218,37 +235,73 @@ def admin():
             return redirect(url_for('admin'))
 
     if not session.get('logged'):
-        return '<form method="post" style="padding:100px;text-align:center;">Pass: <input name="pass" type="password"><button>Login</button></form>'
+        return '<div style="text-align:center; padding:100px;"><h2>Admin Login</h2><form method="post"><input name="pass" type="password"><button>Login</button></form></div>'
     
-    pending = list(withdraws_collection.find({"status": "Pending"}))
+    all_users = list(users_collection.find().limit(50))
+    pending_withdraws = list(withdraws_collection.find({"status": "Pending"}))
+    
     return render_template_string("""
-    <div style="padding:20px; font-family:sans-serif; background:#f1f5f9;">
-        <h2>Settings</h2>
-        <form method="post">
-            Notice: <textarea name="notice" style="width:100%">{{config.notice}}</textarea><br>
-            Ad Rate: <input name="ad_rate" value="{{config.ad_rate}}"> | Ads/Click: <input name="ad_count" value="{{config.ad_count}}"><br>
-            Min: <input name="min_withdraw" value="{{config.min_withdraw}}"> | Max: <input name="max_withdraw" value="{{config.max_withdraw}}"><br>
-            Methods: <input name="methods" value="{{config.withdraw_methods|join(', ')}}" style="width:100%"><br><br>
-            <button type="submit">Update Everything</button>
-        </form>
-        <h3>Pending Withdrawals</h3>
-        <table border="1" width="100%">
-            <tr><th>Name</th><th>Amount</th><th>Method</th><th>Account</th><th>Action</th></tr>
-            {% for w in withdraws %}
-            <tr>
-                <td>{{w.name}}</td><td>{{w.amount}}</td><td>{{w.method}}</td><td>{{w.account}}</td>
-                <td><a href="/admin/pay/{{w._id}}"><button>Mark Paid</button></a></td>
-            </tr>
-            {% endfor %}
-        </table>
-        <br><a href="/logout">Logout</a>
+    <div style="padding:20px; font-family:sans-serif; background:#f4f7f6; max-width:1100px; margin:0 auto; border-radius:15px;">
+        <h2>Admin Master Dashboard</h2>
+        
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+            <div style="background:white; padding:20px; border-radius:10px; box-shadow:0 2px 5px rgba(0,0,0,0.1);">
+                <h3>System Config</h3>
+                <form method="post">
+                    Notice: <input name="notice" value="{{config.notice}}" style="width:100%;"><br><br>
+                    Ad Rate: <input name="ad_rate" value="{{config.ad_rate}}"> Ad Count: <input name="ad_count" value="{{config.ad_count}}"><br><br>
+                    Ref Bonus: <input name="ref_commission" value="{{config.ref_commission}}"> Zone ID: <input name="zone_id" value="{{config.zone_id}}"><br><br>
+                    Min W: <input name="min_withdraw" value="{{config.min_withdraw}}"> Max W: <input name="max_withdraw" value="{{config.max_withdraw}}"><br><br>
+                    <b>VPN Security:</b><br>
+                    VPN ON: <input type="checkbox" name="vpn_on" {% if config.vpn_on %}checked{% endif %}> | Countries: <input name="allowed_countries" value="{{config.allowed_countries}}"><br><br>
+                    <button type="submit" style="background:green; color:white; padding:10px 20px; border:none; cursor:pointer; width:100%;">Save Settings</button>
+                </form>
+            </div>
+
+            <div style="background:white; padding:20px; border-radius:10px; box-shadow:0 2px 5px rgba(0,0,0,0.1);">
+                <h3>Withdraw Requests</h3>
+                <table border="1" width="100%" style="border-collapse:collapse;">
+                    <tr><th>Name</th><th>Amount</th><th>Number</th><th>Action</th></tr>
+                    {% for w in withdraws %}
+                    <tr><td>{{w.name}}</td><td>{{w.amount}}</td><td>{{w.account}}</td><td><a href="/admin/pay/{{w._id}}">Mark Paid</a></td></tr>
+                    {% endfor %}
+                </table>
+            </div>
+        </div>
+
+        <div style="background:white; padding:20px; border-radius:10px; margin-top:20px;">
+            <h3>User Management (Edit Balance/Data)</h3>
+            <table border="1" width="100%" style="border-collapse:collapse;">
+                <tr style="background:#eee;"><th>Name</th><th>Balance</th><th>Refers</th><th>Action</th></tr>
+                {% for u in users %}
+                <tr>
+                    <form action="/admin/edit_user/{{u.user_id}}" method="post">
+                    <td><input name="name" value="{{u.name}}" style="width:100px;"></td>
+                    <td><input name="balance" value="{{u.balance}}" style="width:80px;"></td>
+                    <td><input name="ref_count" value="{{u.ref_count}}" style="width:50px;"></td>
+                    <td><button type="submit" style="background:#3b82f6; color:white; border:none; padding:5px; cursor:pointer;">Update</button></td>
+                    </form>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+        <br><a href="/logout" style="color:red; text-decoration:none;">Logout Admin</a>
     </div>
-    """, config=config, withdraws=pending)
+    """, config=config, users=all_users, withdraws=pending_withdraws)
+
+@app.route('/admin/edit_user/<uid>', methods=['POST'])
+def edit_user(uid):
+    if session.get('logged'):
+        users_collection.update_one({"user_id": uid}, {"$set": {
+            "name": request.form.get('name'),
+            "balance": float(request.form.get('balance')),
+            "ref_count": int(request.form.get('ref_count'))
+        }})
+    return redirect(url_for('admin'))
 
 @app.route('/admin/pay/<wid>')
 def pay_withdraw(wid):
-    if session.get('logged'):
-        withdraws_collection.update_one({"_id": ObjectId(wid)}, {"$set": {"status": "Paid"}})
+    if session.get('logged'): withdraws_collection.update_one({"_id": ObjectId(wid)}, {"$set": {"status": "Paid"}})
     return redirect(url_for('admin'))
 
 @app.route('/logout')
@@ -256,8 +309,6 @@ def logout():
     session.pop('logged', None); return redirect(url_for('admin'))
 
 if __name__ == "__main__":
-    # সজাগ রাখার থ্রেড চালু করা
     threading.Thread(target=keep_alive, daemon=True).start()
-    
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
