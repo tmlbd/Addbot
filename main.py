@@ -13,7 +13,7 @@ app.secret_key = "ULTIMATE_ALL_IN_ONE_EARN_APP_2025"
 
 # --- MongoDB Configuration ---
 # এখানে আপনার নিজের MongoDB Connection URI টি অবশ্যই বসাবেন
-MONGO_URI = "আপনার_মোঙ্গোডিবি_লিঙ্ক_এখানে_দিন" 
+MONGO_URI = "mongodb+srv://roxiw19528:roxiw19528@cluster0.vl508y4.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0" 
 
 try:
     client = MongoClient(MONGO_URI)
