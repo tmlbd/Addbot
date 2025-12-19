@@ -5,16 +5,15 @@ import requests
 import telebot
 from flask import Flask, render_template_string, request, session, redirect, url_for, jsonify
 from pymongo import MongoClient
-from datetime import datetime
+from datetime import datetime, timedelta
 from bson.objectid import ObjectId
 
 # --- CONFIGURATION (Environment Variables) ---
 MONGO_URI = os.environ.get("MONGO_URI")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-# রেন্ডারে এই নতুন ভেরিয়েবলটি যোগ করবেন (যেমন: https://your-app.onrender.com)
 APP_URL_ENV = os.environ.get("APP_URL", "").rstrip('/') 
 ADMIN_PASSWORD_ENV = os.environ.get("ADMIN_PASS", "admin123")
-SECRET_KEY = os.environ.get("SECRET_KEY", "PREMIUM_ULTIMATE_FIX_2025")
+SECRET_KEY = os.environ.get("SECRET_KEY", "ULTIMATE_AD_PRO_2025")
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -30,7 +29,7 @@ if BOT_TOKEN:
 
 # Database Connection
 client = MongoClient(MONGO_URI)
-db = client['mega_earning_v12']
+db = client['mega_earning_final_v17']
 users_collection = db['users']
 settings_collection = db['settings']
 withdraws_collection = db['withdrawals']
@@ -39,10 +38,21 @@ def get_settings():
     setts = settings_collection.find_one({"id": "config"})
     if not setts:
         default = {
-            "id": "config", "ad_count": 1, "ad_rate": 0.50, "ref_commission": 2.00,
-            "min_withdraw": 10.00, "max_withdraw": 1000.00, "withdraw_methods": "Bkash, Nagad",
-            "notice": "সঠিক VPN কানেক্ট করে কাজ করুন!", "zone_id": "10341337", 
-            "vpn_on": False, "allowed_countries": "US,GB,CA", "app_url": APP_URL_ENV
+            "id": "config", 
+            "ad_count_per_click": 2, # এক ক্লিকে কয়টি এড আসবে
+            "ad_rate": 0.50, 
+            "ref_commission": 2.00,
+            "min_withdraw": 10.00, 
+            "max_withdraw": 1000.00, 
+            "daily_ad_limit": 50,
+            "reset_hours": 24,
+            "reset_minutes": 0,
+            "withdraw_methods": ["Bkash", "Nagad", "Rocket"],
+            "notice": "স্বাগতম! সঠিক VPN কানেক্ট করে কাজ করুন!", 
+            "zone_id": "10341337", 
+            "vpn_on": False, 
+            "allowed_countries": "US,GB,CA", 
+            "app_url": APP_URL_ENV
         }
         settings_collection.insert_one(default)
         return default
@@ -57,11 +67,9 @@ if bot:
         config = get_settings()
         ref_by = message.text.split()[1] if len(message.text.split()) > 1 else None
         
-        # সচল ইউআরএল খুঁজে বের করা
         final_url = APP_URL_ENV if APP_URL_ENV else config.get('app_url')
-        
         if not final_url:
-            bot.reply_to(message, "❌ অ্যাডমিন এখনো ওয়েবসাইট লিঙ্ক সেটআপ করেনি। রেন্ডারে APP_URL ভেরিয়েবল যোগ করুন।")
+            bot.reply_to(message, "❌ ওয়েবসাইট ইউআরএল সেটআপ হয়নি। রেন্ডারে APP_URL যোগ করুন।")
             return
 
         dashboard_url = f"{final_url}/?id={uid}&name={name}"
@@ -74,54 +82,96 @@ if bot:
 # --- USER DASHBOARD ---
 USER_DASHBOARD = """
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard</title>
+    <title>Earn Pro | Dashboard</title>
     <script src='//libtl.com/sdk.js' data-zone='{{ config.zone_id }}' data-sdk='show_{{ config.zone_id }}'></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: sans-serif; background: #0f172a; color: white; margin: 0; text-align: center; }
-        .notice { background: #f59e0b; color: black; padding: 10px; font-weight: bold; }
-        .container { padding: 20px; max-width: 450px; margin: auto; }
-        .card { background: #1e293b; border-radius: 20px; padding: 25px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
-        .balance-box { background: linear-gradient(135deg, #10b981, #059669); padding: 20px; border-radius: 15px; margin: 15px 0; }
-        .btn { width: 100%; padding: 15px; border: none; border-radius: 10px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 10px; color: white; }
+        :root { --bg: #0f172a; --card: #1e293b; --primary: #3b82f6; --success: #10b981; --accent: #f59e0b; }
+        body { font-family: 'Poppins', sans-serif; background: var(--bg); color: white; margin: 0; text-align: center; }
+        .notice { background: var(--accent); color: black; padding: 12px; font-weight: 600; font-size: 13px; }
+        .container { width: 100%; max-width: 480px; padding: 20px; margin: auto; box-sizing: border-box; }
+        .card { background: var(--card); border-radius: 24px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .balance-card { background: linear-gradient(135deg, var(--success), #059669); border-radius: 20px; padding: 20px; margin: 20px 0; }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        .stat-item { background: #334155; padding: 12px; border-radius: 16px; font-size: 12px; }
+        .btn { width: 100%; padding: 16px; border: none; border-radius: 16px; font-size: 16px; font-weight: 600; cursor: pointer; margin-bottom: 12px; color: white; transition: 0.2s; }
+        .btn-work { background: var(--primary); box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4); }
+        .btn-withdraw { background: #475569; }
+        .timer-text { font-size: 11px; color: #94a3b8; margin-top: 10px; }
     </style>
 </head>
 <body>
     <div class="notice">📢 {{ config.notice }}</div>
     <div class="container">
         <div class="card">
-            <img src="https://ui-avatars.com/api/?name={{ user.name }}&background=3b82f6&color=fff" style="width:70px; border-radius:50%;">
-            <h3>{{ user.name }}</h3>
-            <div class="balance-box">
+            <img src="https://ui-avatars.com/api/?name={{ user.name }}&background=random&color=fff" style="width:75px; border-radius:50%; border:3px solid var(--primary);">
+            <h2 style="margin:5px 0;">{{ user.name }}</h2>
+            
+            <div class="balance-card">
                 <small>Available Balance</small>
-                <div style="font-size: 34px; font-weight: bold;">৳ <span id="bal">{{ "%.2f"|format(user.balance) }}</span></div>
+                <span style="font-size: 36px; font-weight: 700; display: block;">৳ <span id="bal">{{ "%.2f"|format(user.balance) }}</span></span>
             </div>
-            <button class="btn" style="background:#3b82f6;" onclick="startWork()">WATCH ADS</button>
-            <button class="btn" style="background:#f59e0b;" onclick="openW()">WITHDRAW</button>
-            <div style="text-align: left; font-size: 12px; margin-top: 15px; color: #94a3b8;">
-                ID: {{ user.user_id }} | Refers: {{ user.ref_count }}<br>
-                Ref Link: t.me/{{ bot_username }}?start={{ user.user_id }}
+
+            <div class="stats-grid">
+                <div class="stat-item"><b>{{ user.ref_count }}</b><br>Refers</div>
+                <div class="stat-item"><b id="daily_left">{{ config.daily_ad_limit - user.daily_views }}</b><br>Ads Left</div>
             </div>
+
+            <button class="btn btn-work" onclick="startWork()">WATCH ADS ({{ config.ad_count_per_click }} ADS)</button>
+            <button class="btn btn-withdraw" onclick="openW()">WITHDRAWAL</button>
+
+            <div class="timer-text">Next Reset: <span id="timer">--:--:--</span></div>
         </div>
     </div>
+
     <script>
     function startWork() {
+        let left = parseInt(document.getElementById('daily_left').innerText);
+        if(left <= 0) return alert("আজকের লিমিট শেষ!");
+
         let zid = "{{ config.zone_id }}";
+        let adsToFetch = {{ config.ad_count_per_click }};
+        
         if(typeof window['show_'+zid] === 'function') {
-            for(let i=0; i< {{config.ad_count}}; i++){ window['show_'+zid](); }
-            fetch('/update_balance', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user_id:"{{user.user_id}}"})})
-            .then(res=>res.json()).then(data=> { if(data.success) document.getElementById('bal').innerText = data.new_balance.toFixed(2); });
-        }
+            // পর পর এড দেখানোর লজিক
+            for(let i=0; i < adsToFetch; i++){ 
+                setTimeout(() => { window['show_'+zid](); }, i * 1000); 
+            }
+            
+            fetch('/update_balance', {
+                method:'POST', 
+                headers:{'Content-Type':'application/json'}, 
+                body:JSON.stringify({user_id:"{{user.user_id}}"})
+            }).then(res=>res.json()).then(data=> {
+                if(data.success) {
+                    document.getElementById('bal').innerText = data.new_balance.toFixed(2);
+                    document.getElementById('daily_left').innerText = data.daily_left;
+                }
+            });
+        } else { alert("AdBlocker detected!"); }
     }
+
     function openW() {
-        let amt = prompt("Amount:"); let acc = prompt("Number:");
+        let amt = prompt("টাকার পরিমাণ:"); let acc = prompt("নাম্বার:");
         if(amt && acc) {
             fetch('/request_withdraw', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user_id:"{{user.user_id}}", amount:parseFloat(amt), account:acc})})
             .then(res=>res.json()).then(data=>alert(data.message));
         }
     }
+
+    function updateTimer() {
+        const nextReset = new Date("{{ next_reset }}").getTime();
+        const diff = nextReset - new Date().getTime();
+        if (diff <= 0) { document.getElementById('timer').innerText = "Resetting..."; location.reload(); return; }
+        const h = Math.floor((diff % (86400000)) / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
+        const s = Math.floor((diff % 60000) / 1000);
+        document.getElementById('timer').innerText = h + "h " + m + "m " + s + "s";
+    }
+    setInterval(updateTimer, 1000);
     </script>
 </body>
 </html>
@@ -132,61 +182,55 @@ ADMIN_PANEL = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Admin Panel</title>
+    <title>Master Admin</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { font-family: sans-serif; background: #0f172a; color: white; padding: 20px; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: white; padding: 20px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
         .card { background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; }
-        input, textarea, select { width: 100%; padding: 10px; margin: 8px 0; border-radius: 5px; background: #0f172a; color: white; border: 1px solid #334155; }
-        button { background: #10b981; color: white; border: none; padding: 12px; width: 100%; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        input, textarea, select { width: 100%; padding: 10px; margin: 8px 0; border-radius: 6px; background: #0f172a; color: white; border: 1px solid #334155; box-sizing: border-box; }
+        button { background: linear-gradient(90deg, #10b981, #3b82f6); color: white; border: none; padding: 12px; width: 100%; border-radius: 8px; cursor: pointer; font-weight: bold; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { padding: 10px; border-bottom: 1px solid #334155; text-align: left; font-size: 13px; }
     </style>
 </head>
 <body>
-    <h1 style="text-align:center; color:#818cf8;">💎 Master Admin Dashboard</h1>
-    
+    <h1 style="text-align:center; color:#818cf8;">💎 Master Control Panel</h1>
     <div class="grid">
         <div class="card">
-            <h3>⚙️ App Settings</h3>
+            <h3>⚙️ Settings</h3>
             <form method="post">
                 Notice: <textarea name="notice">{{config.notice}}</textarea>
-                Ad Rate: <input name="ad_rate" step="0.01" value="{{config.ad_rate}}">
-                Ad Count: <input name="ad_count" type="number" value="{{config.ad_count}}">
-                Min Withdraw: <input name="min_withdraw" value="{{config.min_withdraw}}">
+                <b>Ads Per Click (অটো পর পর এড):</b> 
+                <input name="ad_count_per_click" type="number" value="{{config.ad_count_per_click}}">
+                Ad Rate (৳): <input name="ad_rate" step="0.01" value="{{config.ad_rate}}">
+                Daily Limit: <input name="daily_ad_limit" type="number" value="{{config.daily_ad_limit}}">
+                Reset Time: <small>Hours:</small> <input name="reset_hours" type="number" value="{{config.reset_hours}}">
                 Zone ID: <input name="zone_id" value="{{config.zone_id}}">
-                VPN (on/off): <select name="vpn_on">
-                    <option value="on" {% if config.vpn_on %}selected{% endif %}>ON</option>
-                    <option value="off" {% if not config.vpn_on %}selected{% endif %}>OFF</option>
-                </select>
-                <button type="submit">Update Settings</button>
+                <button type="submit">Save All Settings</button>
             </form>
         </div>
 
         <div class="card">
-            <h3>💰 Withdraw Requests</h3>
+            <h3>💰 Withdraws</h3>
             <table>
                 {% for w in withdraws %}
-                <tr>
-                    <td>{{w.name}}<br><small>{{w.account}}</small></td>
-                    <td>৳{{w.amount}}</td>
-                    <td><a href="/admin/pay/{{w._id}}" style="color:#ef4444;">Paid</a></td>
-                </tr>
+                <tr><td>{{w.name}}<br><small>{{w.account}}</small></td><td>৳{{w.amount}}</td><td><a href="/admin/pay/{{w._id}}" style="color:#ef4444;">Paid</a></td></tr>
                 {% endfor %}
             </table>
         </div>
     </div>
 
     <div class="card" style="margin-top:20px;">
-        <h3>👥 User Management</h3>
+        <h3>👥 User Manager</h3>
         <table>
             <tr><th>Name</th><th>Balance</th><th>Action</th></tr>
             {% for u in users %}
             <tr>
                 <form action="/admin/edit_user/{{u.user_id}}" method="post">
-                    <td>{{u.name}}<br><small>{{u.user_id}}</small></td>
-                    <td><input name="balance" value="{{u.balance}}" style="width:70px; margin:0;"></td>
-                    <td><button type="submit" style="width:auto; padding:5px 10px;">Save</button></td>
+                    <td>{{u.name}}</td>
+                    <td><input name="balance" value="{{u.balance}}" style="width:70px;"></td>
+                    <td><button type="submit" style="width:auto; padding:5px 10px;">Update</button></td>
                 </form>
             </tr>
             {% endfor %}
@@ -199,33 +243,43 @@ ADMIN_PANEL = """
 # --- ROUTES ---
 @app.route('/')
 def home():
-    user_id = request.args.get('id')
-    name = request.args.get('name', 'User')
-    ref_by = request.args.get('ref')
-    
-    if not user_id:
-        return "<h1>Join via Bot first!</h1>", 403
+    user_id, name, ref_by = request.args.get('id'), request.args.get('name', 'User'), request.args.get('ref')
+    if not user_id: return "<h1>Join via Bot first!</h1>", 403
     
     config = get_settings()
     user = users_collection.find_one({"user_id": user_id})
+    now = datetime.now()
+    reset_delta = timedelta(hours=config.get('reset_hours', 24), minutes=config.get('reset_minutes', 0))
+
     if not user:
         ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0]
-        ip_exists = users_collection.find_one({"ip_address": ip})
-        user_data = {"user_id": user_id, "name": name, "balance": 0.0, "ref_count": 0, "ip_address": ip, "referred_by": ref_by, "created_at": datetime.now()}
+        user_data = {"user_id": user_id, "name": name, "balance": 0.0, "ref_count": 0, "ip_address": ip, 
+                     "referred_by": ref_by, "daily_views": 0, "last_reset_time": now}
         users_collection.insert_one(user_data)
-        if ref_by and ref_by != user_id and not ip_exists:
-            users_collection.update_one({"user_id": ref_by}, {"$inc": {"balance": config['ref_commission'], "ref_count": 1}})
         user = user_data
     
-    return render_template_string(USER_DASHBOARD, user=user, config=config, bot_username=BOT_USERNAME)
+    # Reset logic
+    last_reset = user.get('last_reset_time', now)
+    next_reset = last_reset + reset_delta
+    if now >= next_reset:
+        users_collection.update_one({"user_id": user_id}, {"$set": {"daily_views": 0, "last_reset_time": now}})
+        user['daily_views'] = 0
+        next_reset = now + reset_delta
+
+    return render_template_string(USER_DASHBOARD, user=user, config=config, 
+                                  next_reset=next_reset.strftime('%Y-%m-%dT%H:%M:%S'), 
+                                  bot_username=BOT_USERNAME)
 
 @app.route('/update_balance', methods=['POST'])
 def update_balance():
     uid = request.json.get('user_id')
     config = get_settings()
-    users_collection.update_one({"user_id": uid}, {"$inc": {"balance": config['ad_rate']}})
-    u = users_collection.find_one({"user_id": uid})
-    return jsonify({"success": True, "new_balance": u['balance']})
+    user = users_collection.find_one({"user_id": uid})
+    if user['daily_views'] >= config['daily_ad_limit']:
+        return jsonify({"success": False, "message": "Limit Reached!"})
+
+    users_collection.update_one({"user_id": uid}, {"$inc": {"balance": config['ad_rate'], "daily_views": 1}})
+    return jsonify({"success": True, "new_balance": user['balance'] + config['ad_rate'], "daily_left": config['daily_ad_limit'] - (user['daily_views'] + 1)})
 
 @app.route('/request_withdraw', methods=['POST'])
 def request_withdraw():
@@ -233,33 +287,31 @@ def request_withdraw():
     config = get_settings()
     user = users_collection.find_one({"user_id": data['user_id']})
     if data['amount'] < config['min_withdraw'] or user['balance'] < data['amount']:
-        return jsonify({"success": False, "message": "Invalid Balance!"})
+        return jsonify({"success": False, "message": "Balance check failed!"})
     users_collection.update_one({"user_id": data['user_id']}, {"$inc": {"balance": -data['amount']}})
     withdraws_collection.insert_one({"user_id": data['user_id'], "name": user['name'], "amount": data['amount'], "account": data['account'], "status": "Pending", "date": datetime.now()})
-    return jsonify({"success": True, "message": "Withdraw Requested!"})
+    return jsonify({"success": True, "message": "Success!"})
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
     config = get_settings()
-    if request.method == 'POST':
-        if session.get('logged'):
-            try:
-                settings_collection.update_one({"id": "config"}, {"$set": {
-                    "notice": request.form.get('notice'),
-                    "ad_rate": float(request.form.get('ad_rate', 0.50)),
-                    "ad_count": int(request.form.get('ad_count', 1)),
-                    "min_withdraw": float(request.form.get('min_withdraw', 10.00)),
-                    "zone_id": request.form.get('zone_id'),
-                    "vpn_on": True if request.form.get('vpn_on') == 'on' else False
-                }})
-                return redirect(url_for('admin'))
-            except: return "Invalid input. Use numbers for rates/limits."
-        elif request.form.get('pass') == ADMIN_PASSWORD_ENV:
-            session['logged'] = True
+    if request.method == 'POST' and session.get('logged'):
+        try:
+            settings_collection.update_one({"id": "config"}, {"$set": {
+                "notice": request.form.get('notice'),
+                "ad_count_per_click": int(request.form.get('ad_count_per_click', 1)),
+                "ad_rate": float(request.form.get('ad_rate')),
+                "daily_ad_limit": int(request.form.get('daily_ad_limit')),
+                "reset_hours": int(request.form.get('reset_hours')),
+                "zone_id": request.form.get('zone_id')
+            }})
             return redirect(url_for('admin'))
+        except: return "Error saving data!"
+    elif request.method == 'POST' and request.form.get('pass') == ADMIN_PASSWORD_ENV:
+        session['logged'] = True
+        return redirect(url_for('admin'))
     
-    if not session.get('logged'):
-        return '<body style="background:#0f172a;color:white;text-align:center;padding:100px;"><form method="post"><h2>Admin Login</h2><input name="pass" type="password"><br><br><button type="submit">Login</button></form></body>'
+    if not session.get('logged'): return '<body style="background:#0f172a;color:white;text-align:center;padding:100px;"><form method="post"><h2>Admin Login</h2><input name="pass" type="password"><button>Login</button></form></body>'
     
     users = list(users_collection.find().limit(50))
     withdraws = list(withdraws_collection.find({"status": "Pending"}))
