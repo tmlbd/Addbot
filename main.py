@@ -12,7 +12,7 @@ from bson.objectid import ObjectId
 MONGO_URI = os.environ.get("MONGO_URI")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_PASSWORD_ENV = os.environ.get("ADMIN_PASS", "admin123")
-SECRET_KEY = os.environ.get("SECRET_KEY", "EARN_PRO_FIXED_2025")
+SECRET_KEY = os.environ.get("SECRET_KEY", "PREMIUM_STAY_SAFE_2025")
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -20,10 +20,10 @@ app.secret_key = SECRET_KEY
 # Bot Setup
 bot = telebot.TeleBot(BOT_TOKEN) if BOT_TOKEN else None
 
-# Database
+# Database Connection
 try:
     client = MongoClient(MONGO_URI)
-    db = client['mega_earning_app']
+    db = client['mega_earning_final_fix']
     users_collection = db['users']
     settings_collection = db['settings']
     withdraws_collection = db['withdrawals']
@@ -62,15 +62,21 @@ if bot:
         config = get_settings()
         ref_by = message.text.split()[1] if len(message.text.split()) > 1 else None
         
-        base_url = config.get('app_url') if config.get('app_url') else request.host_url
+        # ইউআরএল ডিটেকশন ফিক্স
+        base_url = config.get('app_url')
+        if not base_url:
+            # যদি ডাটাবেসে ইউআরএল না থাকে, তবে ইউজারকে জানানো
+            bot.reply_to(message, "⚠️ সাইটটি এখনো সচল হয়নি। এডমিনকে অন্তত একবার ওয়েবসাইটটি ব্রাউজ করতে বলুন।")
+            return
+
         dashboard_url = f"{base_url}?id={uid}&name={name}"
         if ref_by: dashboard_url += f"&ref={ref_by}"
 
         markup = telebot.types.InlineKeyboardMarkup()
         markup.add(telebot.types.InlineKeyboardButton(text="🚀 ওপেন ড্যাশবোর্ড", url=dashboard_url))
-        bot.send_message(message.chat.id, f"👋 স্বাগতম {name}!\n💰 এড দেখে আয় শুরু করতে নিচের বাটনে ক্লিক করুন।", reply_markup=markup)
+        bot.send_message(message.chat.id, f"👋 স্বাগতম {name}!\n💰 এড দেখে আয় শুরু করতে নিচের বাটনে ক্লিক করুন।\n\n📢 নোটিশ: {config['notice']}", reply_markup=markup)
 
-# --- USER DASHBOARD (HTML) ---
+# --- USER DASHBOARD (FIXED) ---
 USER_DASHBOARD = """
 <!DOCTYPE html>
 <html>
@@ -123,93 +129,71 @@ USER_DASHBOARD = """
 </html>
 """
 
-# --- VIBRANT ADMIN PANEL (DESIGNED) ---
+# --- PREMIUM ADMIN PANEL ---
 ADMIN_PANEL = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Admin Panel | Premium</title>
+    <title>Premium Admin Panel</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        :root { --primary: #6366f1; --secondary: #a855f7; --dark: #0f172a; --card: #1e293b; }
-        body { font-family: 'Inter', sans-serif; background: var(--dark); color: #f1f5f9; margin: 0; padding: 20px; }
-        .header { background: linear-gradient(90deg, var(--primary), var(--secondary)); padding: 20px; border-radius: 15px; text-align: center; margin-bottom: 25px; box-shadow: 0 10px 20px rgba(0,0,0,0.3); }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
-        .card { background: var(--card); border-radius: 15px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: 1px solid #334155; }
-        h3 { border-bottom: 2px solid var(--primary); padding-bottom: 10px; margin-top: 0; color: #818cf8; }
-        input, textarea, select { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white; box-sizing: border-box; }
-        button { background: linear-gradient(to right, #10b981, #3b82f6); color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; }
+        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: white; margin: 0; padding: 15px; }
+        .header { background: linear-gradient(90deg, #6366f1, #a855f7); padding: 20px; border-radius: 15px; text-align: center; margin-bottom: 20px; }
+        .card { background: #1e293b; padding: 20px; border-radius: 15px; margin-bottom: 20px; border: 1px solid #334155; }
+        input, select, textarea { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; border-radius: 8px; border: none; background: #10b981; color: white; font-weight: bold; cursor: pointer; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #334155; font-size: 14px; }
-        .btn-pay { background: #ef4444; padding: 5px 10px; font-size: 12px; }
-        .btn-edit { background: #3b82f6; padding: 5px 10px; font-size: 12px; }
+        th, td { padding: 10px; border-bottom: 1px solid #334155; text-align: left; font-size: 13px; }
+        .badge-paid { background: #ef4444; padding: 4px 8px; border-radius: 5px; color: white; text-decoration: none; }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>💎 Premium Admin Master</h1>
-        <p>Manage Users, Settings & Withdrawals</p>
-    </div>
-    
-    <div class="grid">
-        <!-- Settings -->
-        <div class="card">
-            <h3>⚙️ App Settings</h3>
-            <form method="post">
-                <label>Notice Bar:</label>
-                <textarea name="notice">{{config.notice}}</textarea>
-                <label>Ad Rate (৳):</label>
-                <input name="ad_rate" type="number" step="0.01" value="{{config.ad_rate}}">
-                <label>Ads per Click:</label>
-                <input name="ad_count" type="number" value="{{config.ad_count}}">
-                <label>Monetag Zone ID:</label>
-                <input name="zone_id" value="{{config.zone_id}}">
-                <label>Ref Bonus:</label>
-                <input name="ref_commission" type="number" value="{{config.ref_commission}}">
-                <label>VPN Status:</label>
-                <select name="vpn_on">
-                    <option value="on" {% if config.vpn_on %}selected{% endif %}>Enabled (ON)</option>
-                    <option value="off" {% if not config.vpn_on %}selected{% endif %}>Disabled (OFF)</option>
-                </select>
-                <button type="submit">Save All Settings</button>
-            </form>
-        </div>
-
-        <!-- Withdraws -->
-        <div class="card">
-            <h3>💰 Pending Withdrawals</h3>
-            <div style="overflow-x:auto;">
-                <table>
-                    <tr><th>User</th><th>Amount</th><th>Action</th></tr>
-                    {% for w in withdraws %}
-                    <tr>
-                        <td>{{w.name}}<br><small>{{w.account}}</small></td>
-                        <td>৳{{w.amount}}</td>
-                        <td><a href="/admin/pay/{{w._id}}"><button class="btn-pay">Paid</button></a></td>
-                    </tr>
-                    {% endfor %}
-                </table>
-            </div>
-        </div>
+        <h1>👑 Master Control</h1>
     </div>
 
-    <div class="card" style="margin-top:20px;">
-        <h3>👥 User Management</h3>
-        <div style="overflow-x:auto;">
-            <table>
-                <tr><th>Name/ID</th><th>Balance</th><th>Refers</th><th>Action</th></tr>
-                {% for u in users %}
-                <tr>
-                    <form action="/admin/edit_user/{{u.user_id}}" method="post">
-                        <td>{{u.user_id}}<br><input name="name" value="{{u.name}}" style="margin:0;"></td>
-                        <td><input name="balance" type="number" step="0.01" value="{{u.balance}}" style="margin:0;"></td>
-                        <td><input name="ref_count" type="number" value="{{u.ref_count}}" style="margin:0;"></td>
-                        <td><button type="submit" class="btn-edit">Update</button></td>
-                    </form>
-                </tr>
-                {% endfor %}
-            </table>
-        </div>
+    <div class="card">
+        <h3>⚙️ Settings</h3>
+        <form method="post">
+            Notice: <textarea name="notice">{{config.notice}}</textarea>
+            Zone ID: <input name="zone_id" value="{{config.zone_id}}">
+            Ad Rate: <input name="ad_rate" step="0.01" value="{{config.ad_rate}}">
+            Ad Count: <input name="ad_count" type="number" value="{{config.ad_count}}">
+            Min Withdraw: <input name="min_withdraw" value="{{config.min_withdraw}}">
+            VPN (ON/OFF): <select name="vpn_on">
+                <option value="on" {% if config.vpn_on %}selected{% endif %}>Enabled</option>
+                <option value="off" {% if not config.vpn_on %}selected{% endif %}>Disabled</option>
+            </select>
+            <button type="submit">Update All</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3>💰 Pending Withdraws</h3>
+        <table>
+            <tr><th>User</th><th>Amt</th><th>Acc</th><th>Action</th></tr>
+            {% for w in withdraws %}
+            <tr>
+                <td>{{w.name}}</td><td>{{w.amount}}</td><td>{{w.account}}</td>
+                <td><a href="/admin/pay/{{w._id}}" class="badge-paid">Pay</a></td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+
+    <div class="card">
+        <h3>👥 User Manager</h3>
+        <table style="width:100%">
+            {% for u in users %}
+            <tr>
+                <form action="/admin/edit_user/{{u.user_id}}" method="post">
+                <td>{{u.name}}<br><small>{{u.user_id}}</small></td>
+                <td><input name="balance" value="{{u.balance}}" style="width:60px; padding:5px;"></td>
+                <td><button type="submit" style="width:auto; padding:5px 10px;">Save</button></td>
+                </form>
+            </tr>
+            {% endfor %}
+        </table>
     </div>
 </body>
 </html>
@@ -223,23 +207,18 @@ def home():
     ref_by = request.args.get('ref')
     
     if not user_id:
-        return "<h1>Access Denied! Use Bot link.</h1>", 403
+        return "<h1>Join via Bot first!</h1>", 403
     
     config = get_settings()
     
-    # Auto-save App URL for the first time
-    if not config.get('app_url'):
-        settings_collection.update_one({"id": "config"}, {"$set": {"app_url": request.host_url}})
+    # ইউআরএল অটো-আপডেট (বট এরর ফিক্স করতে)
+    current_url = request.host_url
+    if config.get('app_url') != current_url:
+        settings_collection.update_one({"id": "config"}, {"$set": {"app_url": current_url}})
     
-    ip = get_user_ip()
-    if config['vpn_on']:
-        ip_info = check_vpn_status(ip)
-        allowed = [c.strip() for c in config['allowed_countries'].split(',')]
-        if ip_info['country'] not in allowed:
-            return f"<h1>VPN Required!</h1><p>Connect to: {config['allowed_countries']}</p>", 403
-
     user = users_collection.find_one({"user_id": user_id})
     if not user:
+        ip = get_user_ip()
         ip_exists = users_collection.find_one({"ip_address": ip})
         user_data = {"user_id": user_id, "name": name, "balance": 0.0, "ref_count": 0, "ip_address": ip, "referred_by": ref_by, "created_at": datetime.now()}
         users_collection.insert_one(user_data)
@@ -263,10 +242,10 @@ def request_withdraw():
     config = get_settings()
     user = users_collection.find_one({"user_id": data['user_id']})
     if data['amount'] < config['min_withdraw'] or user['balance'] < data['amount']:
-        return jsonify({"success": False, "message": "Invalid Balance!"})
+        return jsonify({"success": False, "message": "Check balance/limit!"})
     users_collection.update_one({"user_id": data['user_id']}, {"$inc": {"balance": -data['amount']}})
     withdraws_collection.insert_one({"user_id": data['user_id'], "name": user['name'], "amount": data['amount'], "account": data['account'], "status": "Pending", "date": datetime.now()})
-    return jsonify({"success": True, "message": "Withdrawal requested!"})
+    return jsonify({"success": True, "message": "Submitted!"})
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
@@ -276,9 +255,8 @@ def admin():
             vpn = True if request.form.get('vpn_on') == 'on' else False
             settings_collection.update_one({"id": "config"}, {"$set": {
                 "ad_rate": float(request.form.get('ad_rate')), "ref_commission": float(request.form.get('ref_commission')),
-                "min_withdraw": float(request.form.get('min_withdraw')), "max_withdraw": float(request.form.get('max_withdraw')),
-                "notice": request.form.get('notice'), "ad_count": int(request.form.get('ad_count')),
-                "zone_id": request.form.get('zone_id'), "vpn_on": vpn
+                "min_withdraw": float(request.form.get('min_withdraw')), "notice": request.form.get('notice'),
+                "ad_count": int(request.form.get('ad_count')), "zone_id": request.form.get('zone_id'), "vpn_on": vpn
             }})
             return redirect(url_for('admin'))
         elif request.form.get('pass') == ADMIN_PASSWORD_ENV:
@@ -286,7 +264,7 @@ def admin():
             return redirect(url_for('admin'))
     
     if not session.get('logged'):
-        return '<body style="background:#0f172a;color:white;text-align:center;padding:100px;"><form method="post"><h2>Admin Login</h2><input name="pass" type="password" style="padding:10px;border-radius:5px;"><br><br><button type="submit" style="padding:10px 20px;">Login</button></form></body>'
+        return '<form method="post" style="text-align:center;padding:100px;">Pass: <input name="pass" type="password"><button>Login</button></form>'
     
     users = list(users_collection.find().limit(50))
     withdraws = list(withdraws_collection.find({"status": "Pending"}))
@@ -295,7 +273,7 @@ def admin():
 @app.route('/admin/edit_user/<uid>', methods=['POST'])
 def edit_user(uid):
     if session.get('logged'):
-        users_collection.update_one({"user_id": uid}, {"$set": {"name": request.form.get('name'), "balance": float(request.form.get('balance')), "ref_count": int(request.form.get('ref_count'))}})
+        users_collection.update_one({"user_id": uid}, {"$set": {"balance": float(request.form.get('balance'))}})
     return redirect(url_for('admin'))
 
 @app.route('/admin/pay/<wid>')
@@ -305,5 +283,9 @@ def pay_withdraw(wid):
     return redirect(url_for('admin'))
 
 if __name__ == "__main__":
-    if bot: threading.Thread(target=lambda: bot.infinity_polling(), daemon=True).start()
+    if bot:
+        # Conflict Error 409 ফিক্স করার জন্য remove_webhook() এবং skip_pending=True
+        bot.remove_webhook()
+        threading.Thread(target=lambda: bot.infinity_polling(skip_pending=True), daemon=True).start()
+    
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
