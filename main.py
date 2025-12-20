@@ -31,11 +31,15 @@ if BOT_TOKEN:
         print("❌ Bot Token Invalid!")
 
 # Database Connection
-client = MongoClient(MONGO_URI)
-db = client['mega_earning_final_v100_secure']
-users_collection = db['users']
-settings_collection = db['settings']
-withdraws_collection = db['withdrawals']
+try:
+    client = MongoClient(MONGO_URI)
+    db = client['mega_earning_ultimate_final_v101'] # Fresh DB Version
+    users_collection = db['users']
+    settings_collection = db['settings']
+    withdraws_collection = db['withdrawals']
+    print("✅ Database Connected Successfully!")
+except Exception as e:
+    print(f"❌ Database Error: {e}")
 
 def get_settings():
     setts = settings_collection.find_one({"id": "config"})
@@ -54,8 +58,8 @@ def get_settings():
             "reset_hours": 24,
             "withdraw_methods": ["Bkash", "Nagad", "Rocket"],
             "recharge_methods": ["GP", "Robi", "Airtel", "Banglalink"],
-            "notice": "সঠিক VPN কানেক্ট করে কাজ শুরু করুন।",
-            "zone_id": "10351894",
+            "notice": "সঠিক VPN (US/UK) কানেক্ট করে কাজ শুরু করুন।",
+            "zone_id": "10351894", # Default Zone ID
             "vpn_on": False,
             "allowed_countries": "US,GB,CA",
             "app_url": APP_URL_ENV
@@ -73,7 +77,7 @@ def check_vpn_status(ip):
         return {"country": res.get('countryCode'), "is_vpn": res.get('proxy') or res.get('hosting')}
     except: return {"country": "Unknown", "is_vpn": False}
 
-# --- TELEGRAM BOT LOGIC (Fixed Info & Start) ---
+# --- TELEGRAM BOT LOGIC (Real-time Info) ---
 if bot:
     @bot.message_handler(commands=['start'])
     def start_cmd(message):
@@ -81,16 +85,16 @@ if bot:
         name = message.from_user.first_name
         config = get_settings()
         
-        # ইউজার ডাটা চেক
+        # ডাটাবেস থেকে ইউজারের লাইভ তথ্য
         user = users_collection.find_one({"user_id": uid})
-        bal = user['balance'] if user else 0.0
-        ref = user['ref_count'] if user else 0
+        balance = user['balance'] if user else 0.0
+        refers = user['ref_count'] if user else 0
         
         ref_by = message.text.split()[1] if len(message.text.split()) > 1 else None
         final_url = APP_URL_ENV if APP_URL_ENV else config.get('app_url')
         
         if not final_url:
-            bot.reply_to(message, "❌ অ্যাডমিন সেটআপ এখনো শেষ হয়নি। (APP_URL Missing)")
+            bot.reply_to(message, "❌ Admin hasn't set APP_URL. Please add APP_URL in Render Settings.")
             return
 
         dashboard_url = f"{final_url}/?id={uid}&name={name}"
@@ -98,10 +102,10 @@ if bot:
 
         msg = (
             f"🚀 **স্বাগতম, {name}!**\n\n"
-            f"📊 **আপনার তথ্য:**\n"
+            f"📊 **আপনার লাইভ তথ্য:**\n"
             f"🆔 আইডি: `{uid}`\n"
-            f"💰 ব্যালেন্স: `{bal:.2f}` ৳\n"
-            f"👥 মোট রেফার: `{ref}` জন\n\n"
+            f"💰 ব্যালেন্স: `{balance:.2f}` ৳\n"
+            f"👥 রেফার: `{refers}` জন\n\n"
             f"📢 **নোটিশ:** {config['notice']}\n"
         )
         
@@ -115,7 +119,7 @@ USER_DASHBOARD = """
 <html lang="en">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Earn Pro | Dashboard</title>
+    <title>Dashboard | Earn Pro</title>
     
     <!-- Monetag SDK Dynamic Tag (Fixed) -->
     <script src='//libtl.com/sdk.js' data-zone='{{ config.zone_id }}' data-sdk='show_{{ config.zone_id }}'></script>
@@ -195,23 +199,23 @@ USER_DASHBOARD = """
 
     function startAutoWork() {
         let left = parseInt(document.getElementById('daily_left').innerText);
-        if(left <= 0) return alert("Daily limit reached!");
+        if(left <= 0) return alert("লিমিট শেষ!");
         
         let zid = "{{ config.zone_id }}";
         let totalAds = {{ config.ad_count_per_click }};
         let interval = {{ config.ad_interval }} * 1000;
         
-        // Monetag Dynamic Ad Trigger (Fixed)
-        let adFunc = window['show_' + zid];
+        // Monetag dynamic function call (Fixed)
+        let adFuncName = 'show_' + zid;
         
-        if (typeof adFunc === 'function') {
+        if (typeof window[adFuncName] === 'function') {
             document.getElementById('workBtn').disabled = true;
             document.getElementById('workBtn').innerText = "Ad 1 Loading...";
             
             let adsDone = 0;
             function runLoop() {
                 if (adsDone < totalAds) {
-                    adFunc(); // কল হচ্ছে Monetag ফাংশন
+                    window[adFuncName](); 
                     adsDone++;
                     if(adsDone < totalAds) {
                         document.getElementById('workBtn').innerText = "Next Ad in " + (interval/1000) + "s...";
@@ -223,7 +227,7 @@ USER_DASHBOARD = """
             }
             runLoop();
         } else { 
-            alert("Ads script not ready! Please check AdBlocker or Zone ID.");
+            alert("Ads script not loaded! Please Disable Ad-Blocker and Refresh the page."); 
             document.getElementById('workBtn').disabled = false;
         }
     }
@@ -272,14 +276,14 @@ ADMIN_PANEL = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Admin Control | Final Master</title>
+    <title>Master Admin Control</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { font-family: 'Outfit', sans-serif; background: #0b0f1a; color: #fff; padding: 20px; }
+        body { font-family: 'Outfit', sans-serif; background: #0b0f1a; color: white; padding: 20px; }
         .header { background: linear-gradient(135deg, #6366f1, #a855f7); padding: 30px; border-radius: 20px; text-align: center; margin-bottom: 30px; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }
         .card { background: #161e31; padding: 20px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); }
-        input, textarea, select { width: 100%; padding: 12px; margin: 8px 0; border-radius: 10px; background: #0b0f1a; color: #fff; border: 1px solid #334155; box-sizing: border-box; }
+        input, textarea, select { width: 100%; padding: 12px; margin: 8px 0; border-radius: 10px; background: #0b0f1a; color: white; border: 1px solid #334155; box-sizing: border-box; }
         button { background: #10b981; color: white; border: none; padding: 12px; width: 100%; border-radius: 10px; cursor: pointer; font-weight: bold; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
         th, td { padding: 10px; border-bottom: 1px solid #334155; }
@@ -289,16 +293,15 @@ ADMIN_PANEL = """
     <div class="header"><h1>👑 Master Admin Control</h1></div>
     <div class="grid">
         <div class="card">
-            <h3>⚙️ App Settings</h3>
+            <h3>⚙️ App Configuration</h3>
             <form method="POST" action="/admin/save_settings">
                 Notice: <textarea name="notice">{{config.notice}}</textarea>
                 Ad Rate: <input name="ad_rate" step="0.01" value="{{config.ad_rate}}">
                 Ads Per Click: <input name="ad_count_per_click" type="number" value="{{config.ad_count_per_click}}">
                 Ad Interval (Seconds): <input name="ad_interval" type="number" value="{{config.ad_interval}}">
                 Daily Limit: <input name="daily_ad_limit" type="number" value="{{config.daily_ad_limit}}">
-                <b>Zone ID (Monetag):</b> <input name="zone_id" value="{{config.zone_id}}">
-                Min Withdraw: <input name="min_withdraw" value="{{config.min_withdraw}}">
-                Min Recharge: <input name="min_recharge" value="{{config.min_recharge}}">
+                <b>Zone ID:</b> <input name="zone_id" value="{{config.zone_id}}">
+                Min Withdraw/Recharge: <div style="display:flex; gap:5px;"><input name="min_withdraw" value="{{config.min_withdraw}}"><input name="min_recharge" value="{{config.min_recharge}}"></div>
                 Withdraw Methods: <input name="withdraw_methods" value="{{ config.withdraw_methods|join(', ') }}">
                 Sim Methods: <input name="recharge_methods" value="{{ config.recharge_methods|join(', ') }}">
                 VPN Status: <select name="vpn_on"><option value="on" {% if config.vpn_on %}selected{% endif %}>ON</option><option value="off" {% if not config.vpn_on %}selected{% endif %}>OFF</option></select>
@@ -309,9 +312,9 @@ ADMIN_PANEL = """
         <div class="card">
             <h3>💰 Pending Requests</h3>
             <table>
-                <tr><th>User/Type</th><th>Amount</th><th>Action</th></tr>
+                <tr><th>User</th><th>Type/Amt</th><th>Action</th></tr>
                 {% for w in withdraws %}
-                <tr><td>{{w.name}}<br><small>{{w.type}}</small></td><td>৳{{w.amount}}</td><td><a href="/admin/pay/{{w._id}}" style="color:red; font-weight:bold;">Paid</a></td></tr>
+                <tr><td>{{w.name}}<br><small>{{w.type}}</small></td><td>৳{{w.amount}}</td><td><a href="/admin/pay/{{w._id}}" style="color:#ef4444; font-weight:bold;">Paid</a></td></tr>
                 {% endfor %}
             </table>
         </div>
@@ -344,13 +347,14 @@ ADMIN_PANEL = """
 @app.route('/')
 def home():
     user_id, name, ref_by = request.args.get('id'), request.args.get('name', 'User'), request.args.get('ref')
-    if not user_id: return "<h1>Join via Bot!</h1>", 403
+    if not user_id: return "<h1>Join via Bot first!</h1>", 403
+    
     config = get_settings()
     ip = get_user_ip()
     now = datetime.now()
     reset_delta = timedelta(hours=config.get('reset_hours', 24))
 
-    # VPN Check
+    # VPN Checking
     if config['vpn_on']:
         ip_info = check_vpn_status(ip)
         allowed = [c.strip() for c in config['allowed_countries'].split(',')]
@@ -362,7 +366,7 @@ def home():
 
     user_by_id = users_collection.find_one({"user_id": user_id})
     
-    # Strict IP Protection
+    # --- Strict IP Check System ---
     if not user_by_id:
         existing_ip_user = users_collection.find_one({"ip_address": ip})
         if existing_ip_user:
@@ -375,11 +379,15 @@ def home():
         if ref_by and ref_by != user_id:
             ref_user_data = users_collection.find_one({"user_id": ref_by})
             if ref_user_data and ref_user_data.get('ip_address') != ip:
-                users_collection.update_one({"user_id": ref_by}, {"$inc": {"balance": config['ref_commission'], "ref_count": 1}})
+                users_collection.update_one(
+                    {"user_id": ref_by}, 
+                    {"$inc": {"balance": config['ref_commission'], "ref_count": 1}}
+                )
         user = user_data
     else:
         user = user_by_id
     
+    # Auto Reset Check
     if now >= user.get('last_reset_time', now) + reset_delta:
         users_collection.update_one({"user_id": user_id}, {"$set": {"daily_views": 0, "last_reset_time": now}})
         user['daily_views'] = 0
@@ -403,7 +411,7 @@ def request_payment():
     user = users_collection.find_one({"user_id": data['user_id']})
     min_amt = config['min_recharge'] if data['type'] == 'Recharge' else config['min_withdraw']
     if data['amount'] < min_amt or user['balance'] < data['amount']:
-        return jsonify({"success": False, "message": "Balance check failed!"})
+        return jsonify({"success": False, "message": "Check Balance or Limit!"})
     users_collection.update_one({"user_id": data['user_id']}, {"$inc": {"balance": -data['amount']}})
     withdraws_collection.insert_one({"user_id": data['user_id'], "name": user['name'], "amount": data['amount'], "account": data['account'], "method": data['method'], "type": data['type'], "status": "Pending", "date": datetime.now()})
     return jsonify({"success": True, "message": "Request Submitted Successfully!"})
