@@ -1,183 +1,163 @@
 import os
 import threading
-import time
-import requests
+from flask import Flask, render_template_string, request, Response
 import telebot
-from flask import Flask, request, session, redirect, url_for, jsonify
-from flask_cors import CORS
 from pymongo import MongoClient
-from datetime import datetime, timedelta
 from bson.objectid import ObjectId
+from datetime import datetime
+import requests
 
-# --- CONFIGURATION ---
-MONGO_URI = os.environ.get("MONGO_URI")
+# --- CONFIGURATION (Render Environment Variables-এ এগুলো সেট করবেন) ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-ADMIN_PASSWORD_ENV = os.environ.get("ADMIN_PASS", "admin123")
-APP_URL_ENV = os.environ.get("APP_URL", "").rstrip('/') # ব্লগারের সঠিক লিঙ্ক
-SECRET_KEY = os.environ.get("SECRET_KEY", "EARN_PRO_ULTRA_2025")
+MONGO_URI = os.environ.get("MONGO_URI")
+# রেন্ডার সাইটের সম্পূর্ণ ইউআরএল (যেমন: https://your-app.onrender.com)
+APP_URL = os.environ.get("APP_URL", "").rstrip('/') 
+# মনিট্যাগ জোন আইডি (যদি এড দেখাতে চান)
+ZONE_ID = os.environ.get("ZONE_ID", "10351894")
 
 app = Flask(__name__)
-app.secret_key = SECRET_KEY
-CORS(app) 
+bot = telebot.TeleBot(BOT_TOKEN)
 
-# Bot Setup
-bot = None
-BOT_USERNAME = "Bot"
-if BOT_TOKEN:
-    try:
-        bot = telebot.TeleBot(BOT_TOKEN)
-        me = bot.get_me()
-        BOT_USERNAME = me.username
-    except: pass
-
-# Database Connection
+# Database Setup
 client = MongoClient(MONGO_URI)
-db = client['integrated_mega_earning_v30']
-users_collection = db['users']
-settings_collection = db['settings']
-withdraws_collection = db['withdrawals']
+db = client['video_master_db']
+video_collection = db['videos']
 
-def get_settings():
-    setts = settings_collection.find_one({"id": "config"})
-    if not setts:
-        default = {
-            "id": "config", "ad_count_per_click": 2, "ad_interval": 3, "ad_rate": 0.50,
-            "ref_commission": 2.00, "min_withdraw": 50.00, "min_recharge": 20.00,
-            "recharge_on": True, "daily_ad_limit": 50, "reset_hours": 24,
-            "withdraw_methods": ["Bkash", "Nagad", "Rocket"],
-            "recharge_methods": ["GP", "Robi", "Airtel", "Banglalink"],
-            "notice": "সঠিক VPN কানেক্ট করে কাজ শুরু করুন।",
-            "zone_id": "10351894", "vpn_on": False, "allowed_countries": "US,GB,CA"
+# --- PREMIUM PLAYER UI (HTML/CSS) ---
+PLAYER_HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watching: {{ title }}</title>
+    <!-- Plyr CSS for Premium Look -->
+    <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body { background: #0b0f1a; color: #fff; font-family: 'Outfit', sans-serif; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
+        .player-wrapper { width: 100%; max-width: 900px; padding: 10px; box-sizing: border-box; }
+        .info { margin-top: 20px; text-align: center; }
+        h1 { font-size: 22px; color: #6366f1; margin: 0; }
+        .download-btn { margin-top: 15px; display: inline-block; padding: 12px 25px; background: #10b981; color: white; text-decoration: none; border-radius: 12px; font-weight: 600; transition: 0.3s; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3); }
+        .download-btn:hover { background: #059669; transform: scale(1.05); }
+        /* Monetag Script */
+    </style>
+    <!-- Monetag SDK -->
+    <script src='//libtl.com/sdk.js' data-zone='{{ zone_id }}' data-sdk='show_{{ zone_id }}'></script>
+</head>
+<body>
+    <div class="player-wrapper">
+        <video id="player" playsinline controls data-poster="">
+            <source src="{{ video_url }}" type="video/mp4" />
+        </video>
+        <div class="info">
+            <h1>{{ title }}</h1>
+            <p style="color: #94a3b8; font-size: 14px;">Streamed via Master Bot</p>
+            <!-- ডিরেক্ট ডাউনলোড বাটন -->
+            <a href="{{ video_url }}" download class="download-btn">📥 Download Video</a>
+        </div>
+    </div>
+
+    <!-- Plyr JS -->
+    <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
+    <script>
+        const player = new Plyr('#player', {
+            controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'captions', 'settings', 'pip', 'airplay', 'download', 'fullscreen'],
+            download: { enabled: true }
+        });
+        // অটো এড ট্রিগার (ঐচ্ছিক)
+        if(typeof window['show_{{ zone_id }}'] === 'function') {
+            setTimeout(() => { window['show_{{ zone_id }}'](); }, 5000);
         }
-        settings_collection.insert_one(default)
-        return default
-    return setts
+    </script>
+</body>
+</html>
+"""
 
 # --- TELEGRAM BOT LOGIC ---
-if bot:
-    @bot.message_handler(commands=['start'])
-    def start_cmd(message):
-        uid = str(message.from_user.id)
-        name = message.from_user.first_name
-        config = get_settings()
-        ref_by = message.text.split()[1] if len(message.text.split()) > 1 else None
+
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    bot.reply_to(message, "👋 **স্বাগতম!**\n\nআমাকে যেকোনো ভিডিও ফাইল পাঠান অথবা ভিডিওর ডাইরেক্ট MP4 লিঙ্ক দিন।\nআমি আপনাকে সেটি অনলাইনে দেখার এবং ডাউনলোড করার লিঙ্ক দিয়ে দেব।")
+
+# ভিডিও ফাইল হ্যান্ডেল করা
+@bot.message_handler(content_types=['video', 'document'])
+def handle_video_file(message):
+    try:
+        file_id = ""
+        file_name = "Untitled Video"
         
-        if not APP_URL_ENV:
-            bot.reply_to(message, "❌ Admin: Please set APP_URL in Render Variables.")
-            return
+        if message.content_type == 'video':
+            file_id = message.video.file_id
+            file_name = message.video.file_name or "Video_File"
+        else:
+            if "video" in message.document.mime_type:
+                file_id = message.document.file_id
+                file_name = message.document.file_name
+            else:
+                return bot.reply_to(message, "❌ এটি কোনো ভিডিও ফাইল নয়!")
 
-        dashboard_url = f"{APP_URL_ENV}?id={uid}&name={name}"
-        if ref_by: dashboard_url += f"&ref={ref_by}"
+        # ডাটাবেসে সেভ করা
+        data = {
+            "title": file_name,
+            "type": "telegram",
+            "file_id": file_id,
+            "date": datetime.now()
+        }
+        res = video_collection.insert_one(data)
+        video_id = str(res.inserted_id)
 
-        markup = telebot.types.InlineKeyboardMarkup()
-        markup.add(telebot.types.InlineKeyboardButton(text="🚀 ওপেন ড্যাশবোর্ড", url=dashboard_url))
-        bot.send_message(message.chat.id, f"👋 স্বাগতম {name}!\n💰 এড দেখে আয় করতে নিচের বাটনে ক্লিক করুন।", reply_markup=markup)
+        watch_url = f"{APP_URL}/watch/{video_id}"
+        bot.reply_to(message, f"✅ **ভিডিও সফলভাবে সেভ হয়েছে!**\n\n🎬 **দেখতে বা ডাউনলোড করতে ক্লিক করুন:**\n{watch_url}", parse_mode="Markdown")
+    except Exception as e:
+        bot.reply_to(message, f"Error: {e}")
 
-# --- API FOR BLOGGER ---
-@app.route('/api/config', methods=['GET'])
-def api_config():
-    config = get_settings()
-    config.pop('_id', None)
-    return jsonify(config)
+# ডাইরেক্ট লিঙ্ক হ্যান্ডেল করা
+@bot.message_handler(func=lambda m: True)
+def handle_direct_link(message):
+    if message.text.startswith("http"):
+        link = message.text.strip()
+        data = {
+            "title": "Online Stream",
+            "type": "link",
+            "url": link,
+            "date": datetime.now()
+        }
+        res = video_collection.insert_one(data)
+        video_id = str(res.inserted_id)
 
-@app.route('/api/user', methods=['POST'])
-def api_user():
-    data = request.json
-    uid, name, ref_by = str(data.get('id')), data.get('name'), data.get('ref')
-    ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0]
-    config = get_settings()
-    now = datetime.now()
+        watch_url = f"{APP_URL}/watch/{video_id}"
+        bot.reply_to(message, f"✅ **লিঙ্ক সেভ হয়েছে!**\n\n🎬 **অনলাইনে দেখুন ও ডাউনলোড করুন:**\n{watch_url}", parse_mode="Markdown")
 
-    user = users_collection.find_one({"user_id": uid})
-    if not user:
-        if users_collection.find_one({"ip_address": ip}):
-            return jsonify({"success": False, "message": "Multiple accounts blocked!"})
-        user_data = {"user_id": uid, "name": name, "balance": 0.0, "ref_count": 0, "ip_address": ip, "referred_by": ref_by, "daily_views": 0, "last_reset_time": now}
-        users_collection.insert_one(user_data)
-        if ref_by and ref_by != uid:
-            users_collection.update_one({"user_id": ref_by}, {"$inc": {"balance": config['ref_commission'], "ref_count": 1}})
-        user = user_data
+# --- WEB ROUTES ---
 
-    user.pop('_id', None)
-    return jsonify({"success": True, "user": user, "bot_username": BOT_USERNAME})
+@app.route('/')
+def index():
+    return "Video Streaming & Downloader Bot is Running!"
 
-@app.route('/api/update_balance', methods=['POST'])
-def update_balance():
-    uid = request.json.get('user_id')
-    config = get_settings()
-    user = users_collection.find_one({"user_id": uid})
-    if user['daily_views'] >= config['daily_ad_limit']: return jsonify({"success": False, "message": "Limit Reached!"})
-    users_collection.update_one({"user_id": uid}, {"$inc": {"balance": config['ad_rate'], "daily_views": 1}})
-    u = users_collection.find_one({"user_id": uid})
-    return jsonify({"success": True, "new_balance": u['balance']})
-
-@app.route('/api/request_payment', methods=['POST'])
-def request_payment():
-    data = request.json
-    config = get_settings()
-    user = users_collection.find_one({"user_id": data['user_id']})
-    min_amt = config['min_recharge'] if data['type'] == 'Recharge' else config['min_withdraw']
-    if data['amount'] < min_amt or user['balance'] < data['amount']:
-        return jsonify({"success": False, "message": "Balance Error!"})
-    users_collection.update_one({"user_id": data['user_id']}, {"$inc": {"balance": -data['amount']}})
-    withdraws_collection.insert_one({"user_id": data['user_id'], "name": user['name'], "amount": data['amount'], "account": data['account'], "method": data['method'], "type": data['type'], "status": "Pending", "date": datetime.now()})
-    return jsonify({"success": True, "message": "Submitted!"})
-
-# --- ADMIN PANEL ---
-@app.route('/admin', methods=['GET', 'POST'])
-def admin():
-    config = get_settings()
-    if request.method == 'POST':
-        if request.form.get('pass') == ADMIN_PASSWORD_ENV:
-            session['logged'] = True
-            return redirect(url_for('admin'))
-    if not session.get('logged'): return '<body style="background:#0b0f1a;color:white;text-align:center;padding:100px;"><h2>Admin Login</h2><form method="POST"><input name="pass" type="password" style="padding:10px;"><button>Login</button></form></body>'
+@app.route('/watch/<vid>')
+def watch_video(vid):
+    video_data = video_collection.find_one({"_id": ObjectId(vid)})
+    if not video_data:
+        return "Video Not Found!", 404
     
-    users = list(users_collection.find().limit(100))
-    withdraws = list(withdraws_collection.find({"status": "Pending"}))
-    return render_template_string("""
-    <div style="font-family:sans-serif; background:#0b0f1a; color:white; padding:20px;">
-        <h1>👑 Admin Control</h1>
-        <form action="/admin/save" method="post" style="background:#161e31; padding:20px; border-radius:10px;">
-            Notice: <textarea name="notice" style="width:100%">{{config.notice}}</textarea><br>
-            Ad Rate: <input name="ad_rate" value="{{config.ad_rate}}"> Zone ID: <input name="zone_id" value="{{config.zone_id}}"><br>
-            Ads/Click: <input name="ad_count" value="{{config.ad_count_per_click}}"> Interval: <input name="ad_interval" value="{{config.ad_interval}}"><br>
-            Withdraw Methods: <input name="w_methods" value="{{config.withdraw_methods|join(', ')}}"><br>
-            Sim Methods: <input name="r_methods" value="{{config.recharge_methods|join(', ')}}"><br>
-            <button type="submit" style="background:green; color:white; padding:10px; width:100%;">Save Everything</button>
-        </form>
-        <h3>💰 Pending Requests</h3>
-        {% for w in withdraws %}
-        <p>{{w.name}} ({{w.type}}) - ৳{{w.amount}} - {{w.account}} <a href="/admin/pay/{{w._id}}" style="color:red;">Mark Paid</a></p>
-        {% endfor %}
-        <br><a href="/logout" style="color:grey;">Logout</a>
-    </div>
-    """, config=config, users=users, withdraws=withdraws)
+    if video_data['type'] == 'link':
+        v_url = video_data['url']
+    else:
+        # টেলিগ্রাম ফাইল সরাসরি স্ট্রিমিং করার লিঙ্ক জেনারেট
+        file_info = bot.get_file(video_data['file_id'])
+        v_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
 
-@app.route('/admin/save', methods=['POST'])
-def save_settings():
-    if session.get('logged'):
-        try:
-            settings_collection.update_one({"id": "config"}, {"$set": {
-                "notice": request.form.get('notice'), "ad_rate": float(request.form.get('ad_rate')),
-                "ad_count_per_click": int(request.form.get('ad_count')), "ad_interval": int(request.form.get('ad_interval')),
-                "withdraw_methods": [m.strip() for m in request.form.get('w_methods').split(',')],
-                "recharge_methods": [r.strip() for r in request.form.get('r_methods').split(',')],
-                "zone_id": request.form.get('zone_id')
-            }}, upsert=True)
-        except: pass
-    return redirect(url_for('admin'))
+    return render_template_string(PLAYER_HTML, video_url=v_url, title=video_data['title'], zone_id=ZONE_ID)
 
-@app.route('/admin/pay/<wid>')
-def pay_withdraw(wid):
-    if session.get('logged'): withdraws_collection.update_one({"_id": ObjectId(wid)}, {"$set": {"status": "Paid"}})
-    return redirect(url_for('admin'))
-
-@app.route('/logout')
-def logout(): session.pop('logged', None); return redirect(url_for('admin'))
+# বটের পোলিং ফাংশন
+def run_polling():
+    bot.infinity_polling()
 
 if __name__ == "__main__":
-    if bot:
-        bot.remove_webhook()
-        threading.Thread(target=lambda: bot.infinity_polling(skip_pending=True), daemon=True).start()
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
+    # বটকে আলাদা থ্রেডে চালানো
+    threading.Thread(target=run_polling, daemon=True).start()
+    # ফ্ল্যাস্ক ওয়েব সার্ভার শুরু
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
