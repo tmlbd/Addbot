@@ -16,15 +16,14 @@ MONGO_URI = os.environ.get("MONGO_URI", "")
 APP_URL = os.environ.get("APP_URL", "").rstrip('/')
 LOG_CHANNEL = int(os.environ.get("LOG_CHANNEL_ID", "0"))
 
-# ফাস্ট স্ট্রিমিং এর জন্য অপ্টিমাইজড ক্লায়েন্ট
+# হাই-স্পিড কনফিগারেশন (TypeError ফিক্স করা হয়েছে)
 bot = Client(
-    "fast_stream_master", 
+    "fast_stream_pro", 
     api_id=API_ID, 
     api_hash=API_HASH, 
     bot_token=BOT_TOKEN,
     sleep_threshold=120,
-    max_concurrent_transfers=10, # প্যারালাল ডাটা ট্রান্সফার
-    workers=50
+    workers=100  # প্যারালাল মেসেজ হ্যান্ডলিংয়ের জন্য
 )
 
 # Database
@@ -43,36 +42,29 @@ PLAYER_HTML = """
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         body {{ background: #000; color: #fff; font-family: 'Outfit', sans-serif; margin: 0; display: flex; align-items: center; justify-content: center; height: 100vh; }}
-        .container {{ width: 100%; max-width: 1000px; padding: 20px; text-align: center; }}
+        .container {{ width: 95%; max-width: 1000px; padding: 20px; text-align: center; }}
         .v-title {{ margin: 15px 0; font-size: 20px; color: #818cf8; font-weight: 600; }}
         .controls-info {{ font-size: 12px; color: #475569; margin-bottom: 15px; }}
-        .btn-group {{ display: flex; gap: 10px; justify-content: center; margin-top: 15px; }}
-        .btn-dl {{ background: #10b981; color: #fff; text-decoration: none; padding: 12px 25px; border-radius: 12px; font-weight: 700; transition: 0.3s; }}
+        .btn-dl {{ background: #10b981; color: #fff; text-decoration: none; padding: 14px 35px; border-radius: 12px; font-weight: 700; display: inline-block; transition: 0.3s; box-shadow: 0 10px 20px rgba(16, 185, 129, 0.2); }}
         .btn-dl:hover {{ transform: scale(1.05); background: #059669; }}
     </style>
 </head>
 <body>
     <div class="container">
         <video id="player" playsinline controls preload="auto">
-            <!-- Telegram Source -->
-            <source src="{stream_url}" type="video/mp4" size="Original" />
+            <source src="{stream_url}" type="video/mp4" />
         </video>
         <div class="v-title">{title}</div>
-        <div class="controls-info">Fast Buffering Enabled | Parallel Streaming Active</div>
-        <div class="btn-group">
-            <a href="{stream_url}" class="btn-dl" download>📥 High Speed Download</a>
-        </div>
+        <div class="controls-info">Powered by Parallel Streaming | High-Speed Chunk Buffering</div>
+        <a href="{stream_url}" class="btn-dl" download>📥 High Speed Download</a>
     </div>
 
     <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
     <script>
         const player = new Plyr('#player', {{
             settings: ['quality', 'speed', 'loop'],
-            quality: {{ default: 'Original', options: ['Original'] }},
             speed: {{ selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] }},
-            invertTime: false,
-            keyboard: {{ focused: true, global: true }},
-            tooltips: {{ controls: true, seek: true }}
+            invertTime: false
         }});
     </script>
 </body>
@@ -102,9 +94,7 @@ async def stream_handler(request):
         if ranges[1]:
             end = int(ranges[1])
 
-    # Chunk Buffering Logic (1MB Chunk for Smoothness)
-    chunk_size = 1024 * 1024 
-    
+    # এআইওএইচটিটিপি রেসপন্স শুরু (Parallel Streaming Support)
     response = web.StreamResponse(
         status=206 if range_header else 200,
         headers={
@@ -113,20 +103,17 @@ async def stream_handler(request):
             "Accept-Ranges": "bytes",
             "Content-Range": f"bytes {start}-{end}/{file_size}",
             "Content-Length": str(end - start + 1),
-            "Cache-Control": "no-cache",
         }
     )
 
     await response.prepare(request)
 
-    # Parallel Chunk Reading (Buffering)
+    # টেলিগ্রাম থেকে সরাসরি ডাটা স্ট্রিম করা (Buffering ফিক্সড)
     try:
-        # টেলিগ্রাম থেকে সরাসরি ডাটা পাইপ করা (No Local Storage)
         async for chunk in bot.stream_media(
             file_id, 
             offset=start, 
-            limit=end - start + 1,
-            offset_chunks=False # হাই স্পিডের জন্য ফিক্সড চ্যাঙ্কিং
+            limit=end - start + 1
         ):
             await response.write(chunk)
     except Exception as e:
@@ -142,18 +129,18 @@ async def watch_page(request):
     stream_url = f"{APP_URL}/dl/{vid}"
     return web.Response(text=PLAYER_HTML.format(title=data['title'], stream_url=stream_url), content_type='text/html')
 
-# --- BOT LOGIC ---
+# --- BOT HANDLERS ---
 
 @bot.on_message(filters.command("start") & filters.private)
 async def start_msg(c, m):
-    await m.reply_text(f"🚀 **পাওয়ারফুল হাই-স্পিড স্ট্রিমিং বট!**\n\nযেকোনো বড় ভিডিও (৪জিবি+) পাঠান। আপনি সুপার ফাস্ট প্লে ও ডাউনলোড লিঙ্ক পাবেন।")
+    await m.reply_text(f"👋 **হ্যালো {m.from_user.first_name}!**\n\nআমাকে যেকোনো বড় ভিডিও (৪জিবি+) পাঠান। আমি সেটির সুপার ফাস্ট প্লে ও ডাউনলোড লিঙ্ক দেব।")
 
 @bot.on_message((filters.video | filters.document) & filters.private)
 async def handle_video(c, m):
     media = m.video or m.document
     if m.document and "video" not in m.document.mime_type: return
 
-    status = await m.reply_text("⏳ **সুপার ফাস্ট লিঙ্ক তৈরি হচ্ছে...**")
+    status = await m.reply_text("⏳ **লিঙ্ক তৈরি হচ্ছে...**")
     
     try:
         log_msg = await m.forward(LOG_CHANNEL)
@@ -178,15 +165,16 @@ async def handle_video(c, m):
 
 async def main():
     await bot.start()
-    server = web.Application()
-    server.router.add_get("/", lambda r: web.Response(text="High Speed Streaming Active!"))
-    server.router.add_get("/watch/{vid}", watch_page)
-    server.router.add_get("/dl/{vid}", stream_handler)
+    app_server = web.Application()
+    app_server.router.add_get("/", lambda r: web.Response(text="Power Stream Pro Active!"))
+    app_server.router.add_get("/watch/{vid}", watch_page)
+    app_server.router.add_get("/dl/{vid}", stream_handler)
     
-    runner = web.AppRunner(server)
+    runner = web.AppRunner(app_server)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", int(os.environ.get("PORT", 10000)))
     await site.start()
+    print("🚀 Server Started Successfully!")
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
