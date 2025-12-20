@@ -1,7 +1,0 @@
-pyrogram
-tgcrypto
-fastapi
-uvicorn
-motor
-pymongo
-python-dotenv
