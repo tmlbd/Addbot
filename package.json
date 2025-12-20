@@ -1,7 +1,7 @@
 {
-  "name": "telegram-catbox-bot",
+  "name": "telegram-numeric-forcejoin-bot",
   "version": "1.0.0",
-  "description": "Image to Direct Link Bot",
+  "description": "Image to Direct Link Bot with Numeric Channel ID Support",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
