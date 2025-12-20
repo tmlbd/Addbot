@@ -1,95 +1,100 @@
-const { Telegraf } = require('telegraf');
+const { Telegraf, Markup } = require('telegraf');
 const axios = require('axios');
 const FormData = require('form-data');
 const express = require('express');
 
-// Environment Variables
+// --- Environment Variables (রেন্ডার থেকে আসবে) ---
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const APP_URL = process.env.APP_URL; // আপনার রেন্ডার অ্যাপের URL
+const APP_URL = process.env.APP_URL; 
+const CHANNEL_ID = process.env.CHANNEL_ID; // উদাহরণ: -100123456789
+const CHANNEL_LINK = process.env.CHANNEL_LINK; // উদাহরণ: https://t.me/YourChannel
 const PORT = process.env.PORT || 3000;
 
 const bot = new Telegraf(BOT_TOKEN);
 const app = express();
 
-// রেন্ডার সার্ভার সেটআপ
-app.get('/', (req, res) => {
-    res.send('Bot is Running and Active!');
-});
-
+// ১. রেন্ডার সার্ভার ও সেলফ-পিং (বট যেন ঘুমিয়ে না যায়)
+app.get('/', (req, res) => res.send('Bot is Running...'));
 app.listen(PORT, () => {
-    console.log(`Server started on port ${PORT}`);
+    console.log(`Server is live on port ${PORT}`);
     
-    // বটকে জাগিয়ে রাখার ব্যবস্থা (Self-Ping)
+    // প্রতি ১০ মিনিট পরপর নিজেকে নিজে পিং করবে
     setInterval(() => {
         if (APP_URL) {
-            axios.get(APP_URL)
-                .then(() => console.log('Self-ping successful!'))
-                .catch(err => console.log('Ping failed, but bot is still running.'));
+            axios.get(APP_URL).catch(() => {});
         }
-    }, 600000); // ১০ মিনিট পরপর পিং করবে
+    }, 600000); 
 });
 
-// /start কমান্ড
-bot.start((ctx) => {
+// ২. মেম্বারশিপ চেক করার ফাংশন (সাংখ্যিক আইডি সাপোর্ট করবে)
+async function checkMembership(ctx) {
+    try {
+        const member = await ctx.telegram.getChatMember(CHANNEL_ID, ctx.from.id);
+        const status = member.status;
+        // মেম্বার, এডমিন বা ক্রিয়েটর হলেই ট্রু রিটার্ন করবে
+        return (status === 'member' || status === 'administrator' || status === 'creator');
+    } catch (e) {
+        console.error("Membership check error:", e.message);
+        return false;
+    }
+}
+
+// ৩. /start কমান্ড
+bot.start(async (ctx) => {
     const user = ctx.from;
-    const msg = `👋 হ্যালো **${user.first_name}**!
+    const welcomeText = `👋 হ্যালো **${user.first_name}**!
     
-👤 **আপনার প্রোফাইল তথ্য:**
-🆔 ইউজার আইডি: \`${user.id}\`
-📜 নাম: ${user.first_name} ${user.last_name || ''}
-🔗 ইউজারনেম: @${user.username || 'নেই'}
+🖼 ছবি পাঠিয়ে সরাসরি লিঙ্ক পেতে হলে অবশ্যই আমাদের চ্যানেলে জয়েন থাকতে হবে। আপনার জয়েন করা না থাকলে আমি লিঙ্ক দিবো না।`;
 
-🖼 আপনি আমাকে যেকোনো ছবি পাঠান, আমি সেটির **Direct JPG Link** দিয়ে দেব।`;
-    
-    ctx.replyWithMarkdown(msg);
+    ctx.replyWithMarkdown(welcomeText, Markup.inlineKeyboard([
+        [Markup.button.url('📢 আমাদের চ্যানেলে জয়েন করুন', CHANNEL_LINK)]
+    ]));
 });
 
-// ছবি থেকে ডিরেক্ট লিঙ্ক তৈরির কাজ
+// ৪. ফটো এবং ডকুমেন্ট (ছবি) প্রসেসিং
 bot.on(['photo', 'document'], async (ctx) => {
     try {
-        let fileId;
+        // প্রতিবার মেম্বারশিপ চেক করা হবে
+        const isMember = await checkMembership(ctx);
+        if (!isMember) {
+            return ctx.reply(`⚠️ আপনি আমাদের চ্যানেলে নেই! \n\nলিঙ্ক পেতে হলে আপনাকে আবার জয়েন করতে হবে।`, 
+                Markup.inlineKeyboard([
+                    [Markup.button.url('📢 জয়েন করুন', CHANNEL_LINK)]
+                ])
+            );
+        }
 
-        // ফটো বা ডকুমেন্ট চেক করা
+        let fileId;
         if (ctx.message.photo) {
             fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
         } else if (ctx.message.document && ctx.message.document.mime_type.startsWith('image/')) {
             fileId = ctx.message.document.file_id;
         } else {
-            return; 
+            return; // ছবি না হলে কিছু করবে না
         }
 
-        ctx.reply('⏳ ডিরেক্ট লিঙ্ক তৈরি হচ্ছে... দয়া করে অপেক্ষা করুন।');
-
-        // ১. টেলিগ্রাম থেকে ফাইল পাথ নেওয়া
-        const fileLink = await ctx.telegram.getFileLink(fileId);
-        const imageUrl = fileLink.href;
-
-        // ২. Catbox.moe তে আপলোড করা
+        // টেলিগ্রাম থেকে ফাইল লিঙ্ক পাওয়া
+        const telegramFile = await ctx.telegram.getFileLink(fileId);
+        
+        // Catbox API তে আপলোড
         const form = new FormData();
         form.append('reqtype', 'urlupload');
-        form.append('url', imageUrl);
+        form.append('url', telegramFile.href);
 
         const response = await axios.post('https://catbox.moe/user/api.php', form, {
             headers: form.getHeaders()
         });
 
-        const directLink = response.data; // এটি সরাসরি https://files.catbox.moe/xxx.jpg লিঙ্ক দেয়
-
-        // ৩. ইউজারকে আউটপুট দেওয়া
-        const finalMsg = `✅ **লিঙ্ক তৈরি সফল!**
-
-🔗 সরাসরি লিঙ্ক: ${directLink}`;
-        
-        ctx.reply(finalMsg);
+        // শুধুমাত্র ডিরেক্ট লিঙ্কটি রিপ্লাই দিবে (আপনার চাহিদা মতো)
+        ctx.reply(response.data);
 
     } catch (error) {
-        console.error(error);
-        ctx.reply('❌ দুঃখিত, লিঙ্ক তৈরি করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।');
+        console.error("Error:", error.message);
+        ctx.reply('❌ দুঃখিত, একটি সমস্যা হয়েছে। আবার চেষ্টা করুন।');
     }
 });
 
 bot.launch();
 
-// কন্ট্রোল সি বা টার্মিনেট করলে বট বন্ধ হবে
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
