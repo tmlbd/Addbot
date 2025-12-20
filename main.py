@@ -1,6 +1,7 @@
 import os
 import asyncio
 import mimetypes
+import math
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -8,7 +9,7 @@ from aiohttp import web
 from bson.objectid import ObjectId
 from datetime import datetime
 
-# --- CONFIGURATION (Environment Variables থেকে নিবে) ---
+# --- CONFIGURATION (Environment Variables) ---
 API_ID = int(os.environ.get("API_ID", "0"))
 API_HASH = os.environ.get("API_HASH", "")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
@@ -18,21 +19,21 @@ LOG_CHANNEL = int(os.environ.get("LOG_CHANNEL_ID", "0"))
 
 # হাই-স্পিড ও প্যারালাল স্ট্রিমিং কনফিগারেশন
 bot = Client(
-    "ultra_fast_stream_v2", 
+    "power_stream_pro", 
     api_id=API_ID, 
     api_hash=API_HASH, 
     bot_token=BOT_TOKEN,
     sleep_threshold=120,
-    max_concurrent_transmissions=10, # প্যারালাল ডাটা ট্রান্সফার ফিক্স
-    workers=100 # মেসেজ হ্যান্ডলিং স্পিড
+    max_concurrent_transmissions=10, # প্যারালাল ট্রান্সফার (নতুন ভার্সন অনুযায়ী)
+    workers=100
 )
 
 # Database Setup
 db_client = AsyncIOMotorClient(MONGO_URI)
-db = db_client['power_stream_db_final']
+db = db_client['ultra_fast_stream_db']
 video_collection = db['videos']
 
-# --- PREMIUM PLAYER UI (Quality & Speed Control) ---
+# --- PREMIUM PLAYER UI (Glassmorphism & High Quality) ---
 PLAYER_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -47,7 +48,7 @@ PLAYER_HTML = """
         .v-title {{ margin: 15px 0; font-size: 20px; color: #818cf8; font-weight: 600; }}
         .controls-info {{ font-size: 11px; color: #475569; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; }}
         .btn-dl {{ background: linear-gradient(135deg, #10b981, #059669); color: #fff; text-decoration: none; padding: 14px 35px; border-radius: 12px; font-weight: 700; display: inline-block; transition: 0.3s; box-shadow: 0 10px 20px rgba(16, 185, 129, 0.2); }}
-        .btn-dl:hover {{ transform: scale(1.05); }}
+        .btn-dl:hover {{ transform: translateY(-3px); box-shadow: 0 15px 30px rgba(16, 185, 129, 0.4); }}
     </style>
 </head>
 <body>
@@ -56,10 +57,9 @@ PLAYER_HTML = """
             <source src="{stream_url}" type="video/mp4" />
         </video>
         <div class="v-title">{title}</div>
-        <div class="controls-info">Fast Buffering | Parallel Pipe Active</div>
+        <div class="controls-info">Fast Buffering | Parallel Stream Active</div>
         <a href="{stream_url}" class="btn-dl" download>📥 High Speed Download</a>
     </div>
-
     <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
     <script>
         const player = new Plyr('#player', {{
@@ -72,7 +72,7 @@ PLAYER_HTML = """
 </html>
 """
 
-# --- HIGH-SPEED CHUNK STREAMING ENGINE ---
+# --- HIGH-SPEED CHUNK STREAMING ENGINE (Direct Pipe) ---
 
 async def stream_handler(request):
     vid = request.match_info.get('vid')
@@ -98,7 +98,6 @@ async def stream_handler(request):
         if ranges[1]:
             end = int(ranges[1])
 
-    # Aiohttp Stream Response
     response = web.StreamResponse(
         status=206 if range_header else 200,
         headers={
@@ -113,13 +112,9 @@ async def stream_handler(request):
 
     await response.prepare(request)
 
-    # টেলিগ্রাম থেকে সরাসরি প্যারালাল ডাটা পাইপ করা (Chunk Buffering)
+    # প্যারালাল স্ট্রিমিং ও বাফারিং
     try:
-        async for chunk in bot.stream_media(
-            file_id, 
-            offset=start, 
-            limit=end - start + 1
-        ):
+        async for chunk in bot.stream_media(file_id, offset=start, limit=end - start + 1):
             await response.write(chunk)
     except Exception as e:
         print(f"Streaming Error: {e}")
@@ -129,58 +124,73 @@ async def stream_handler(request):
 async def watch_page(request):
     vid = request.match_info.get('vid')
     data = await video_collection.find_one({"_id": ObjectId(vid)})
-    if not data: return web.Response(text="Not Found", status=404)
+    if not data: return web.Response(text="Video Not Found", status=404)
     
     stream_url = f"{APP_URL}/dl/{vid}"
     return web.Response(text=PLAYER_HTML.format(title=data['title'], stream_url=stream_url), content_type='text/html')
 
-# --- BOT HANDLERS ---
+# --- BOT LOGIC ---
 
 @bot.on_message(filters.command("start") & filters.private)
 async def start_msg(c, m):
-    await m.reply_text(f"👋 **হ্যালো {m.from_user.first_name}!**\n\nআমাকে যেকোনো বড় মুভি বা ভিডিও (৪জিবি+) পাঠান। আমি সেটির সুপার ফাস্ট প্লে ও ডাউনলোড লিঙ্ক দেব।")
+    # ডাটাবেস চেক করে ইউজারের জন্য স্টার্ট মেসেজ
+    await m.reply_text(
+        f"👋 **হ্যালো {m.from_user.first_name}!**\n\n"
+        f"আমাকে যেকোনো বড় মুভি বা ভিডিও (৪জিবি+) পাঠান। আমি সেটির সুপার ফাস্ট প্লে ও ডাউনলোড লিঙ্ক দেব।"
+    )
 
 @bot.on_message((filters.video | filters.document) & filters.private)
 async def handle_video(c, m):
     media = m.video or m.document
     if m.document and "video" not in m.document.mime_type: return
 
-    status = await m.reply_text("⏳ **সুপার ফাস্ট লিঙ্ক তৈরি হচ্ছে...**")
+    status = await m.reply_text("⏳ **প্রসেস হচ্ছে...**")
     
     try:
-        # ফাইলটি লগ চ্যানেলে রাখা বাধ্যতামূলক (MTProto এক্সেসের জন্য)
+        # ফাইলটি লগ চ্যানেলে ফরওয়ার্ড করা (সার্ভার এক্সেস নিশ্চিত করতে)
         log_msg = await m.forward(LOG_CHANNEL)
     except:
-        return await status.edit("❌ বটকে লগ চ্যানেলে এডমিন করুন!")
+        return await status.edit("❌ বটকে আপনার লগ চ্যানেলে এডমিন করুন এবং LOG_CHANNEL_ID চেক করুন।")
 
+    # ডাটাবেসে সেভ
     res = await video_collection.insert_one({
         "title": media.file_name or "video.mp4",
         "file_id": media.file_id,
         "file_size": media.file_size,
+        "msg_id": log_msg.id,
         "time": datetime.now()
     })
     
-    watch_url = f"{APP_URL}/watch/{str(res.inserted_id)}"
+    video_id = str(res.inserted_id)
+    watch_url = f"{APP_URL}/watch/{video_id}"
     
     await status.edit(
-        f"✅ **ফাইল রেডি!**\n\n🎬 **Watch Online:** {watch_url}\n🚀 এটি IDM/ADM সাপোর্ট করে।",
+        f"✅ **ভিডিও রেডি!**\n\n🎬 **Watch Online:** {watch_url}\n🚀 এটি IDM/ADM হাই-স্পিড সাপোর্ট করে।",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🎬 প্লে ও ডাউনলোড", url=watch_url)]])
     )
 
-# --- STARTUP ---
+# --- STARTUP & HEALTH CHECK ---
 
 async def main():
     await bot.start()
     app_server = web.Application()
-    app_server.router.add_get("/", lambda r: web.Response(text="Parallel Stream Pro Active!"))
+    
+    # রেন্ডার সার্ভার যেন সজাগ থাকে
+    async def health_check(request):
+        return web.Response(text="Power Stream Bot is Active!", status=200)
+
+    app_server.router.add_get("/", health_check)
     app_server.router.add_get("/watch/{vid}", watch_page)
     app_server.router.add_get("/dl/{vid}", stream_handler)
     
     runner = web.AppRunner(app_server)
     await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", int(os.environ.get("PORT", 10000)))
+    
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    
     await site.start()
-    print("🚀 Server Started Successfully!")
+    print(f"🚀 Server running on port {port}")
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
