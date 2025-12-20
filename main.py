@@ -4,20 +4,21 @@ import time
 import requests
 import telebot
 from flask import Flask, render_template_string, request, session, redirect, url_for, jsonify
-from flask_cors import CORS  # ব্লগারে ডেটা পাঠানোর জন্য এটি দরকার
+from flask_cors import CORS
 from pymongo import MongoClient
 from datetime import datetime, timedelta
 from bson.objectid import ObjectId
 
-# --- CONFIGURATION ---
+# --- CONFIGURATION (Environment Variables) ---
 MONGO_URI = os.environ.get("MONGO_URI")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_PASSWORD_ENV = os.environ.get("ADMIN_PASS", "admin123")
-SECRET_KEY = os.environ.get("SECRET_KEY", "EARN_PRO_API_2025")
+APP_URL_ENV = os.environ.get("APP_URL", "").rstrip('/') # ব্লগারের পোস্ট লিঙ্ক
+SECRET_KEY = os.environ.get("SECRET_KEY", "EARN_PRO_API_MASTER_2025")
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
-CORS(app) # ব্লগার থেকে রিকোয়েস্ট এলাউ করার জন্য
+CORS(app) # এটি ব্লগার থেকে রিকোয়েস্ট আসার অনুমতি দিবে
 
 # Bot Setup
 bot = None
@@ -31,7 +32,7 @@ if BOT_TOKEN:
 
 # Database Connection
 client = MongoClient(MONGO_URI)
-db = client['blogger_earning_system']
+db = client['mega_earning_blogger_v1']
 users_collection = db['users']
 settings_collection = db['settings']
 withdraws_collection = db['withdrawals']
@@ -45,15 +46,38 @@ def get_settings():
             "recharge_on": True, "daily_ad_limit": 50, "reset_hours": 24,
             "withdraw_methods": ["Bkash", "Nagad", "Rocket"],
             "recharge_methods": ["GP", "Robi", "Airtel"],
-            "notice": "স্বাগতম! ব্লগারে কাজ করে আয় করুন।",
+            "notice": "স্বাগতম! কাজ শুরু করুন সঠিক VPN দিয়ে।",
             "zone_id": "10351894", "vpn_on": False, "allowed_countries": "US,GB,CA"
         }
         settings_collection.insert_one(default)
         return default
     return setts
 
-def get_user_ip():
-    return request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0]
+# --- TELEGRAM BOT LOGIC ---
+if bot:
+    @bot.message_handler(commands=['start'])
+    def start_cmd(message):
+        uid = str(message.from_user.id)
+        name = message.from_user.first_name
+        config = get_settings()
+        
+        user = users_collection.find_one({"user_id": uid})
+        balance = user['balance'] if user else 0.0
+        
+        ref_by = message.text.split()[1] if len(message.text.split()) > 1 else None
+        
+        # ব্লগার ইউআরএল ভেরিয়েবল থেকে নেওয়া
+        if not APP_URL_ENV:
+            bot.reply_to(message, "❌ Admin: Please set APP_URL (Blogger Link) in Render Variables.")
+            return
+
+        dashboard_url = f"{APP_URL_ENV}/?id={uid}&name={name}"
+        if ref_by: dashboard_url += f"&ref={ref_by}"
+
+        msg = (f"👋 **স্বাগতম, {name}!**\n\n💰 ব্যালেন্স: `{balance:.2f}` ৳\n📢 নোটিশ: {config['notice']}\n\n👇 কাজ শুরু করতে নিচের বাটনে ক্লিক করুন।")
+        markup = telebot.types.InlineKeyboardMarkup()
+        markup.add(telebot.types.InlineKeyboardButton(text="🚀 ওপেন ড্যাশবোর্ড", url=dashboard_url))
+        bot.send_message(message.chat.id, msg, reply_markup=markup, parse_mode="Markdown")
 
 # --- API FOR BLOGGER ---
 
@@ -67,7 +91,7 @@ def api_config():
 def api_user():
     data = request.json
     uid, name, ref_by = str(data.get('id')), data.get('name'), data.get('ref')
-    ip = get_user_ip()
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0]
     config = get_settings()
     now = datetime.now()
 
@@ -114,7 +138,7 @@ def request_payment():
     withdraws_collection.insert_one({"user_id": data['user_id'], "name": user['name'], "amount": data['amount'], "account": data['account'], "method": data['method'], "type": data['type'], "status": "Pending", "date": datetime.now()})
     return jsonify({"success": True, "message": "Request submitted!"})
 
-# --- ADMIN PANEL (Render-এ থাকবে) ---
+# --- PREMIUM ADMIN PANEL ---
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
@@ -125,10 +149,8 @@ def admin():
             return redirect(url_for('admin'))
     if not session.get('logged'): return '<body style="background:#0b0f1a;color:white;text-align:center;padding:100px;"><h2>Admin Login</h2><form method="POST"><input name="pass" type="password" style="padding:10px;"><button type="submit">Login</button></form></body>'
     
-    users = list(users_collection.find().limit(100))
+    users = list(users_collection.find().limit(50))
     withdraws = list(withdraws_collection.find({"status": "Pending"}))
-    
-    # অ্যাডমিন প্যানেল ডিজাইন (আপনার দেওয়া ডিজাইন অনুযায়ী)
     return render_template_string("""
     <!DOCTYPE html>
     <html>
@@ -144,20 +166,20 @@ def admin():
         </style>
     </head>
     <body>
-        <h1 style="text-align:center;">👑 Master Admin Panel</h1>
+        <h1 style="text-align:center; color:#6366f1;">💎 Master Admin</h1>
         <div class="grid">
             <div class="card">
-                <h3>⚙️ App Configuration</h3>
+                <h3>⚙️ Settings</h3>
                 <form method="POST" action="/admin/save_settings">
                     Notice: <textarea name="notice">{{config.notice}}</textarea>
                     Ad Rate: <input name="ad_rate" step="0.01" value="{{config.ad_rate}}">
                     Ads Per Click: <input name="ad_count_per_click" type="number" value="{{config.ad_count_per_click}}">
-                    Ad Interval: <input name="ad_interval" type="number" value="{{config.ad_interval}}">
+                    Ad Interval (Sec): <input name="ad_interval" type="number" value="{{config.ad_interval}}">
                     Zone ID: <input name="zone_id" value="{{config.zone_id}}">
                     Min Withdraw: <input name="min_withdraw" value="{{config.min_withdraw}}">
                     Min Recharge: <input name="min_recharge" value="{{config.min_recharge}}">
-                    W Methods: <input name="withdraw_methods" value="{{ config.withdraw_methods|join(', ') }}">
-                    Sim Names: <input name="recharge_methods" value="{{ config.recharge_methods|join(', ') }}">
+                    Withdraw Methods: <input name="withdraw_methods" value="{{ config.withdraw_methods|join(', ') }}">
+                    Recharge Methods: <input name="recharge_methods" value="{{ config.recharge_methods|join(', ') }}">
                     <button type="submit">Update Everything</button>
                 </form>
             </div>
@@ -169,7 +191,7 @@ def admin():
             </div>
         </div>
         <div class="card" style="margin-top:20px;">
-            <h3>👥 User Manager</h3>
+            <h3>👥 User Control</h3>
             {% for u in users %}
             <form action="/admin/edit_user/{{u.user_id}}" method="POST" style="display:flex;gap:5px;margin-bottom:5px;">
                 <span>{{u.name}}</span>
@@ -178,6 +200,7 @@ def admin():
             </form>
             {% endfor %}
         </div>
+        <br><center><a href="/logout" style="color:grey;">Logout</a></center>
     </body>
     </html>
     """, config=config, users=users, withdraws=withdraws)
@@ -207,6 +230,9 @@ def edit_user(uid):
 def pay_withdraw(wid):
     if session.get('logged'): withdraws_collection.update_one({"_id": ObjectId(wid)}, {"$set": {"status": "Paid"}})
     return redirect(url_for('admin'))
+
+@app.route('/logout')
+def logout(): session.pop('logged', None); return redirect(url_for('admin'))
 
 if __name__ == "__main__":
     if bot:
