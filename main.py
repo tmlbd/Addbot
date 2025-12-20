@@ -13,7 +13,7 @@ MONGO_URI = os.environ.get("MONGO_URI")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_PASSWORD_ENV = os.environ.get("ADMIN_PASS", "admin123")
 APP_URL_ENV = os.environ.get("APP_URL", "").rstrip('/')
-SECRET_KEY = os.environ.get("SECRET_KEY", "PREMIUM_ULTIMATE_MASTER_2025")
+SECRET_KEY = os.environ.get("SECRET_KEY", "EARN_PRO_ULTRA_MASTER_2025")
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -24,15 +24,15 @@ BOT_USERNAME = "Bot"
 if BOT_TOKEN:
     try:
         bot = telebot.TeleBot(BOT_TOKEN)
-        bot_user = bot.get_me()
-        BOT_USERNAME = bot_user.username
+        me = bot.get_me()
+        BOT_USERNAME = me.username
         print(f"✅ Bot Connected: @{BOT_USERNAME}")
     except:
         print("❌ Bot Token Invalid!")
 
 # Database Connection
 client = MongoClient(MONGO_URI)
-db = client['mega_earning_ultimate_final_v100']
+db = client['mega_earning_final_v100_secure']
 users_collection = db['users']
 settings_collection = db['settings']
 withdraws_collection = db['withdrawals']
@@ -73,7 +73,7 @@ def check_vpn_status(ip):
         return {"country": res.get('countryCode'), "is_vpn": res.get('proxy') or res.get('hosting')}
     except: return {"country": "Unknown", "is_vpn": False}
 
-# --- TELEGRAM BOT LOGIC ---
+# --- TELEGRAM BOT LOGIC (Fixed Info & Start) ---
 if bot:
     @bot.message_handler(commands=['start'])
     def start_cmd(message):
@@ -81,15 +81,16 @@ if bot:
         name = message.from_user.first_name
         config = get_settings()
         
+        # ইউজার ডাটা চেক
         user = users_collection.find_one({"user_id": uid})
-        balance = user['balance'] if user else 0.0
-        ref_count = user['ref_count'] if user else 0
+        bal = user['balance'] if user else 0.0
+        ref = user['ref_count'] if user else 0
         
         ref_by = message.text.split()[1] if len(message.text.split()) > 1 else None
         final_url = APP_URL_ENV if APP_URL_ENV else config.get('app_url')
         
         if not final_url:
-            bot.reply_to(message, "❌ Admin: Please set APP_URL in Render Variables.")
+            bot.reply_to(message, "❌ অ্যাডমিন সেটআপ এখনো শেষ হয়নি। (APP_URL Missing)")
             return
 
         dashboard_url = f"{final_url}/?id={uid}&name={name}"
@@ -99,8 +100,8 @@ if bot:
             f"🚀 **স্বাগতম, {name}!**\n\n"
             f"📊 **আপনার তথ্য:**\n"
             f"🆔 আইডি: `{uid}`\n"
-            f"💰 ব্যালেন্স: `{balance:.2f}` ৳\n"
-            f"👥 মোট রেফার: `{ref_count}` জন\n\n"
+            f"💰 ব্যালেন্স: `{bal:.2f}` ৳\n"
+            f"👥 মোট রেফার: `{ref}` জন\n\n"
             f"📢 **নোটিশ:** {config['notice']}\n"
         )
         
@@ -108,7 +109,7 @@ if bot:
         markup.add(telebot.types.InlineKeyboardButton(text="🚀 ওপেন ড্যাশবোর্ড", url=dashboard_url))
         bot.send_message(message.chat.id, msg, reply_markup=markup, parse_mode="Markdown")
 
-# --- USER DASHBOARD ---
+# --- USER DASHBOARD (ULTRA PREMIUM & FIXED ADS) ---
 USER_DASHBOARD = """
 <!DOCTYPE html>
 <html lang="en">
@@ -116,7 +117,7 @@ USER_DASHBOARD = """
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Earn Pro | Dashboard</title>
     
-    <!-- Monetag Dynamic SDK Script (Fixed) -->
+    <!-- Monetag SDK Dynamic Tag (Fixed) -->
     <script src='//libtl.com/sdk.js' data-zone='{{ config.zone_id }}' data-sdk='show_{{ config.zone_id }}'></script>
     
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
@@ -137,7 +138,7 @@ USER_DASHBOARD = """
         .btn-recharge { background: #8b5cf6; }
         .ref-box { background: #000; padding: 15px; border-radius: 15px; font-size: 11px; word-break: break-all; color: #3b82f6; border: 1px solid #1e293b; margin-top: 15px; text-align: left; }
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); }
-        .modal-content { background: #161e31; margin: 15% auto; padding: 30px; width: 85%; max-width: 400px; border-radius: 25px; border: 1px solid #334155; }
+        .modal-content { background: #161e31; margin: 15% auto; padding: 30px; width: 85%; max-width: 380px; border-radius: 25px; border: 1px solid #334155; }
         input, select { width: 100%; padding: 14px; margin: 10px 0; border-radius: 12px; background: #0b0f1a; color: #fff; border: 1px solid #334155; }
     </style>
 </head>
@@ -171,7 +172,7 @@ USER_DASHBOARD = """
             <h3>Withdraw Money</h3>
             <select id="w_method">{% for m in config.withdraw_methods %}<option value="{{m}}">{{m}}</option>{% endfor %}</select>
             <input type="number" id="w_amount" placeholder="Amount">
-            <input type="text" id="w_account" placeholder="Number">
+            <input type="text" id="w_account" placeholder="Wallet Number">
             <button class="btn btn-work" onclick="submitReq('Withdraw', 'w_method', 'w_amount', 'w_account')">Confirm</button>
             <button class="btn btn-withdraw" onclick="closeM('withdrawModal')">Cancel</button>
         </div>
@@ -181,8 +182,8 @@ USER_DASHBOARD = """
         <div class="modal-content">
             <h3>Mobile Recharge</h3>
             <select id="r_method">{% for r in config.recharge_methods %}<option value="{{r}}">{{r}}</option>{% endfor %}</select>
-            <input type="number" id="r_amount" placeholder="Amount">
-            <input type="text" id="r_account" placeholder="Number">
+            <input type="number" id="r_amount" placeholder="Min ৳{{config.min_recharge}}">
+            <input type="text" id="r_account" placeholder="Phone Number">
             <button class="btn btn-recharge" onclick="submitReq('Recharge', 'r_method', 'r_amount', 'r_account')">Confirm</button>
             <button class="btn btn-withdraw" onclick="closeM('rechargeModal')">Cancel</button>
         </div>
@@ -200,17 +201,17 @@ USER_DASHBOARD = """
         let totalAds = {{ config.ad_count_per_click }};
         let interval = {{ config.ad_interval }} * 1000;
         
-        // Monetag dynamic function call (Fixed)
-        let adFuncName = 'show_' + zid;
+        // Monetag Dynamic Ad Trigger (Fixed)
+        let adFunc = window['show_' + zid];
         
-        if (typeof window[adFuncName] === 'function') {
+        if (typeof adFunc === 'function') {
             document.getElementById('workBtn').disabled = true;
             document.getElementById('workBtn').innerText = "Ad 1 Loading...";
             
             let adsDone = 0;
             function runLoop() {
                 if (adsDone < totalAds) {
-                    window[adFuncName](); // Execute Monetag Ad
+                    adFunc(); // কল হচ্ছে Monetag ফাংশন
                     adsDone++;
                     if(adsDone < totalAds) {
                         document.getElementById('workBtn').innerText = "Next Ad in " + (interval/1000) + "s...";
@@ -222,7 +223,7 @@ USER_DASHBOARD = """
             }
             runLoop();
         } else { 
-            alert("Ads failing to load! Please Disable Ad-Blocker/Shield and Refresh the page."); 
+            alert("Ads script not ready! Please check AdBlocker or Zone ID.");
             document.getElementById('workBtn').disabled = false;
         }
     }
@@ -266,40 +267,41 @@ USER_DASHBOARD = """
 </html>
 """
 
-# --- ADMIN PANEL ---
+# --- MASTER ADMIN PANEL ---
 ADMIN_PANEL = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Master Admin Control</title>
+    <title>Admin Control | Final Master</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { font-family: 'Outfit', sans-serif; background: #0b0f1a; color: white; padding: 20px; }
-        .header { background: linear-gradient(135deg, #6366f1, #a855f7); padding: 20px; border-radius: 20px; text-align: center; margin-bottom: 30px; }
+        body { font-family: 'Outfit', sans-serif; background: #0b0f1a; color: #fff; padding: 20px; }
+        .header { background: linear-gradient(135deg, #6366f1, #a855f7); padding: 30px; border-radius: 20px; text-align: center; margin-bottom: 30px; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }
         .card { background: #161e31; padding: 20px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); }
-        input, textarea, select { width: 100%; padding: 12px; margin: 8px 0; border-radius: 10px; background: #0b0f1a; color: white; border: 1px solid #334155; }
+        input, textarea, select { width: 100%; padding: 12px; margin: 8px 0; border-radius: 10px; background: #0b0f1a; color: #fff; border: 1px solid #334155; box-sizing: border-box; }
         button { background: #10b981; color: white; border: none; padding: 12px; width: 100%; border-radius: 10px; cursor: pointer; font-weight: bold; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
         th, td { padding: 10px; border-bottom: 1px solid #334155; }
     </style>
 </head>
 <body>
-    <div class="header"><h1>👑 Master Admin Panel</h1></div>
+    <div class="header"><h1>👑 Master Admin Control</h1></div>
     <div class="grid">
         <div class="card">
-            <h3>⚙️ App Configuration</h3>
+            <h3>⚙️ App Settings</h3>
             <form method="POST" action="/admin/save_settings">
                 Notice: <textarea name="notice">{{config.notice}}</textarea>
                 Ad Rate: <input name="ad_rate" step="0.01" value="{{config.ad_rate}}">
                 Ads Per Click: <input name="ad_count_per_click" type="number" value="{{config.ad_count_per_click}}">
-                Interval (Sec): <input name="ad_interval" type="number" value="{{config.ad_interval}}">
+                Ad Interval (Seconds): <input name="ad_interval" type="number" value="{{config.ad_interval}}">
                 Daily Limit: <input name="daily_ad_limit" type="number" value="{{config.daily_ad_limit}}">
-                <b>Zone ID:</b> <input name="zone_id" value="{{config.zone_id}}">
-                Min Withdraw/Recharge: <div style="display:flex; gap:5px;"><input name="min_withdraw" value="{{config.min_withdraw}}"><input name="min_recharge" value="{{config.min_recharge}}"></div>
+                <b>Zone ID (Monetag):</b> <input name="zone_id" value="{{config.zone_id}}">
+                Min Withdraw: <input name="min_withdraw" value="{{config.min_withdraw}}">
+                Min Recharge: <input name="min_recharge" value="{{config.min_recharge}}">
                 Withdraw Methods: <input name="withdraw_methods" value="{{ config.withdraw_methods|join(', ') }}">
                 Sim Methods: <input name="recharge_methods" value="{{ config.recharge_methods|join(', ') }}">
-                VPN: <select name="vpn_on"><option value="on" {% if config.vpn_on %}selected{% endif %}>ON</option><option value="off" {% if not config.vpn_on %}selected{% endif %}>OFF</option></select>
+                VPN Status: <select name="vpn_on"><option value="on" {% if config.vpn_on %}selected{% endif %}>ON</option><option value="off" {% if not config.vpn_on %}selected{% endif %}>OFF</option></select>
                 Allowed Countries: <input name="allowed_countries" value="{{config.allowed_countries}}">
                 <button type="submit">Update Everything</button>
             </form>
@@ -307,7 +309,7 @@ ADMIN_PANEL = """
         <div class="card">
             <h3>💰 Pending Requests</h3>
             <table>
-                <tr><th>User</th><th>Type/Amt</th><th>Action</th></tr>
+                <tr><th>User/Type</th><th>Amount</th><th>Action</th></tr>
                 {% for w in withdraws %}
                 <tr><td>{{w.name}}<br><small>{{w.type}}</small></td><td>৳{{w.amount}}</td><td><a href="/admin/pay/{{w._id}}" style="color:red; font-weight:bold;">Paid</a></td></tr>
                 {% endfor %}
@@ -315,7 +317,7 @@ ADMIN_PANEL = """
         </div>
     </div>
     <div class="card" style="margin-top:20px;">
-        <h3>👥 User Manager</h3>
+        <h3>👥 User Management</h3>
         <div style="overflow-x:auto;">
             <table>
                 <tr><th>Name/ID</th><th>Balance</th><th>Daily Views</th><th>Refers</th><th>Action</th></tr>
@@ -333,7 +335,7 @@ ADMIN_PANEL = """
             </table>
         </div>
     </div>
-    <br><center><a href="/logout" style="color:red; text-decoration:none; font-weight:bold;">Logout</a></center>
+    <br><center><a href="/logout" style="color:red; text-decoration:none; font-weight:bold;">Logout Admin</a></center>
 </body>
 </html>
 """
@@ -342,12 +344,13 @@ ADMIN_PANEL = """
 @app.route('/')
 def home():
     user_id, name, ref_by = request.args.get('id'), request.args.get('name', 'User'), request.args.get('ref')
-    if not user_id: return "<h1>Join via Bot first!</h1>", 403
+    if not user_id: return "<h1>Join via Bot!</h1>", 403
     config = get_settings()
     ip = get_user_ip()
     now = datetime.now()
     reset_delta = timedelta(hours=config.get('reset_hours', 24))
 
+    # VPN Check
     if config['vpn_on']:
         ip_info = check_vpn_status(ip)
         allowed = [c.strip() for c in config['allowed_countries'].split(',')]
@@ -359,6 +362,7 @@ def home():
 
     user_by_id = users_collection.find_one({"user_id": user_id})
     
+    # Strict IP Protection
     if not user_by_id:
         existing_ip_user = users_collection.find_one({"ip_address": ip})
         if existing_ip_user:
@@ -399,10 +403,10 @@ def request_payment():
     user = users_collection.find_one({"user_id": data['user_id']})
     min_amt = config['min_recharge'] if data['type'] == 'Recharge' else config['min_withdraw']
     if data['amount'] < min_amt or user['balance'] < data['amount']:
-        return jsonify({"success": False, "message": "Check Balance or Limit!"})
+        return jsonify({"success": False, "message": "Balance check failed!"})
     users_collection.update_one({"user_id": data['user_id']}, {"$inc": {"balance": -data['amount']}})
     withdraws_collection.insert_one({"user_id": data['user_id'], "name": user['name'], "amount": data['amount'], "account": data['account'], "method": data['method'], "type": data['type'], "status": "Pending", "date": datetime.now()})
-    return jsonify({"success": True, "message": "Submitted Successfully!"})
+    return jsonify({"success": True, "message": "Request Submitted Successfully!"})
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
@@ -421,14 +425,13 @@ def admin():
 def save_settings():
     if session.get('logged'):
         try:
-            w_methods = [m.strip() for m in request.form.get('withdraw_methods').split(',')]
-            r_methods = [r.strip() for r in request.form.get('recharge_methods').split(',')]
             settings_collection.update_one({"id": "config"}, {"$set": {
                 "notice": request.form.get('notice'), "ad_rate": float(request.form.get('ad_rate')),
                 "ad_count_per_click": int(request.form.get('ad_count_per_click')), "ad_interval": int(request.form.get('ad_interval')),
                 "min_withdraw": float(request.form.get('min_withdraw')), "min_recharge": float(request.form.get('min_recharge')),
                 "daily_ad_limit": int(request.form.get('daily_ad_limit')), "zone_id": request.form.get('zone_id'),
-                "withdraw_methods": w_methods, "recharge_methods": r_methods,
+                "withdraw_methods": [m.strip() for m in request.form.get('withdraw_methods').split(',')],
+                "recharge_methods": [r.strip() for r in request.form.get('recharge_methods').split(',')],
                 "vpn_on": True if request.form.get('vpn_on') == 'on' else False,
                 "allowed_countries": request.form.get('allowed_countries')
             }}, upsert=True)
