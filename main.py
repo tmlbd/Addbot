@@ -1,163 +1,169 @@
 import os
-import threading
-from flask import Flask, render_template_string, request, Response
-import telebot
-from pymongo import MongoClient
+import asyncio
+import time
+from pyrogram import Client, filters
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from motor.motor_asyncio import AsyncIOMotorClient
+from aiohttp import web
 from bson.objectid import ObjectId
-from datetime import datetime
-import requests
 
-# --- CONFIGURATION (Render Environment Variables-এ এগুলো সেট করবেন) ---
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-MONGO_URI = os.environ.get("MONGO_URI")
-# রেন্ডার সাইটের সম্পূর্ণ ইউআরএল (যেমন: https://your-app.onrender.com)
-APP_URL = os.environ.get("APP_URL", "").rstrip('/') 
-# মনিট্যাগ জোন আইডি (যদি এড দেখাতে চান)
-ZONE_ID = os.environ.get("ZONE_ID", "10351894")
+# --- CONFIGURATION (Environment Variables) ---
+API_ID = int(os.environ.get("API_ID", "0"))
+API_HASH = os.environ.get("API_HASH", "")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+MONGO_URI = os.environ.get("MONGO_URI", "")
+APP_URL = os.environ.get("APP_URL", "").rstrip('/')
+LOG_CHANNEL = int(os.environ.get("LOG_CHANNEL_ID", "0"))
 
-app = Flask(__name__)
-bot = telebot.TeleBot(BOT_TOKEN)
+# Initialize Pyrogram Bot
+bot = Client("ultra_stream_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# Database Setup
-client = MongoClient(MONGO_URI)
-db = client['video_master_db']
-video_collection = db['videos']
+# Database
+db_client = AsyncIOMotorClient(MONGO_URI)
+db = db_client['ultra_stream_db']
+videos = db['videos']
 
-# --- PREMIUM PLAYER UI (HTML/CSS) ---
+# --- WEB PLAYER UI (Premium Look) ---
 PLAYER_HTML = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Watching: {{ title }}</title>
-    <!-- Plyr CSS for Premium Look -->
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watching: {title}</title>
     <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600&display=swap" rel="stylesheet">
     <style>
-        body { background: #0b0f1a; color: #fff; font-family: 'Outfit', sans-serif; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
-        .player-wrapper { width: 100%; max-width: 900px; padding: 10px; box-sizing: border-box; }
-        .info { margin-top: 20px; text-align: center; }
-        h1 { font-size: 22px; color: #6366f1; margin: 0; }
-        .download-btn { margin-top: 15px; display: inline-block; padding: 12px 25px; background: #10b981; color: white; text-decoration: none; border-radius: 12px; font-weight: 600; transition: 0.3s; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3); }
-        .download-btn:hover { background: #059669; transform: scale(1.05); }
-        /* Monetag Script */
+        body {{ background: #050811; color: #fff; font-family: 'Outfit', sans-serif; margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }}
+        .player-card {{ width: 95%; max-width: 1000px; background: #101625; padding: 25px; border-radius: 30px; box-shadow: 0 30px 60px rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.05); text-align: center; }}
+        .v-title {{ margin: 20px 0; font-size: 22px; color: #6366f1; font-weight: 600; }}
+        .dl-btn {{ background: linear-gradient(135deg, #10b981, #059669); color: #fff; text-decoration: none; padding: 15px 35px; border-radius: 15px; font-weight: 700; display: inline-block; transition: 0.3s; box-shadow: 0 10px 20px rgba(16, 185, 129, 0.2); }}
+        .dl-btn:hover {{ transform: translateY(-3px); box-shadow: 0 15px 30px rgba(16, 185, 129, 0.4); }}
     </style>
-    <!-- Monetag SDK -->
-    <script src='//libtl.com/sdk.js' data-zone='{{ zone_id }}' data-sdk='show_{{ zone_id }}'></script>
 </head>
 <body>
-    <div class="player-wrapper">
-        <video id="player" playsinline controls data-poster="">
-            <source src="{{ video_url }}" type="video/mp4" />
+    <div class="player-card">
+        <video id="player" playsinline controls>
+            <source src="{stream_url}" type="video/mp4" />
         </video>
-        <div class="info">
-            <h1>{{ title }}</h1>
-            <p style="color: #94a3b8; font-size: 14px;">Streamed via Master Bot</p>
-            <!-- ডিরেক্ট ডাউনলোড বাটন -->
-            <a href="{{ video_url }}" download class="download-btn">📥 Download Video</a>
-        </div>
+        <div class="v-title">{title}</div>
+        <a href="{stream_url}" class="dl-btn" download>📥 Download High Speed</a>
     </div>
-
-    <!-- Plyr JS -->
     <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
-    <script>
-        const player = new Plyr('#player', {
-            controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'captions', 'settings', 'pip', 'airplay', 'download', 'fullscreen'],
-            download: { enabled: true }
-        });
-        // অটো এড ট্রিগার (ঐচ্ছিক)
-        if(typeof window['show_{{ zone_id }}'] === 'function') {
-            setTimeout(() => { window['show_{{ zone_id }}'](); }, 5000);
-        }
-    </script>
+    <script>const player = new Plyr('#player', {{ ratio: '16:9' }});</script>
 </body>
 </html>
 """
 
-# --- TELEGRAM BOT LOGIC ---
+# --- DIRECT STREAMING LOGIC ---
 
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.reply_to(message, "👋 **স্বাগতম!**\n\nআমাকে যেকোনো ভিডিও ফাইল পাঠান অথবা ভিডিওর ডাইরেক্ট MP4 লিঙ্ক দিন।\nআমি আপনাকে সেটি অনলাইনে দেখার এবং ডাউনলোড করার লিঙ্ক দিয়ে দেব।")
-
-# ভিডিও ফাইল হ্যান্ডেল করা
-@bot.message_handler(content_types=['video', 'document'])
-def handle_video_file(message):
+async def stream_handler(request):
+    vid = request.match_info.get('vid')
     try:
-        file_id = ""
-        file_name = "Untitled Video"
-        
-        if message.content_type == 'video':
-            file_id = message.video.file_id
-            file_name = message.video.file_name or "Video_File"
-        else:
-            if "video" in message.document.mime_type:
-                file_id = message.document.file_id
-                file_name = message.document.file_name
-            else:
-                return bot.reply_to(message, "❌ এটি কোনো ভিডিও ফাইল নয়!")
+        data = await videos.find_one({"_id": ObjectId(vid)})
+    except:
+        return web.Response(text="Invalid ID", status=400)
 
-        # ডাটাবেসে সেভ করা
-        data = {
-            "title": file_name,
-            "type": "telegram",
-            "file_id": file_id,
-            "date": datetime.now()
-        }
-        res = video_collection.insert_one(data)
-        video_id = str(res.inserted_id)
+    if not data:
+        return web.Response(text="File Not Found", status=404)
 
-        watch_url = f"{APP_URL}/watch/{video_id}"
-        bot.reply_to(message, f"✅ **ভিডিও সফলভাবে সেভ হয়েছে!**\n\n🎬 **দেখতে বা ডাউনলোড করতে ক্লিক করুন:**\n{watch_url}", parse_mode="Markdown")
-    except Exception as e:
-        bot.reply_to(message, f"Error: {e}")
+    file_id = data['file_id']
+    file_size = data['file_size']
+    file_name = data['title']
 
-# ডাইরেক্ট লিঙ্ক হ্যান্ডেল করা
-@bot.message_handler(func=lambda m: True)
-def handle_direct_link(message):
-    if message.text.startswith("http"):
-        link = message.text.strip()
-        data = {
-            "title": "Online Stream",
-            "type": "link",
-            "url": link,
-            "date": datetime.now()
-        }
-        res = video_collection.insert_one(data)
-        video_id = str(res.inserted_id)
+    # Range request handling (Seeking support)
+    range_header = request.headers.get("Range")
+    start = 0
+    if range_header:
+        start = int(range_header.replace("bytes=", "").split("-")[0])
 
-        watch_url = f"{APP_URL}/watch/{video_id}"
-        bot.reply_to(message, f"✅ **লিঙ্ক সেভ হয়েছে!**\n\n🎬 **অনলাইনে দেখুন ও ডাউনলোড করুন:**\n{watch_url}", parse_mode="Markdown")
+    # Headers for Browser
+    headers = {
+        "Content-Type": "video/mp4",
+        "Content-Disposition": f'attachment; filename="{file_name}"',
+        "Accept-Ranges": "bytes",
+    }
 
-# --- WEB ROUTES ---
-
-@app.route('/')
-def index():
-    return "Video Streaming & Downloader Bot is Running!"
-
-@app.route('/watch/<vid>')
-def watch_video(vid):
-    video_data = video_collection.find_one({"_id": ObjectId(vid)})
-    if not video_data:
-        return "Video Not Found!", 404
-    
-    if video_data['type'] == 'link':
-        v_url = video_data['url']
+    if range_header:
+        headers["Content-Range"] = f"bytes {start}-{file_size-1}/{file_size}"
+        status = 206
     else:
-        # টেলিগ্রাম ফাইল সরাসরি স্ট্রিমিং করার লিঙ্ক জেনারেট
-        file_info = bot.get_file(video_data['file_id'])
-        v_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
+        status = 200
 
-    return render_template_string(PLAYER_HTML, video_url=v_url, title=video_data['title'], zone_id=ZONE_ID)
+    response = web.StreamResponse(status=status, headers=headers)
+    response.content_length = file_size - start
+    await response.prepare(request)
 
-# বটের পোলিং ফাংশন
-def run_polling():
-    bot.infinity_polling()
+    # Chunk-by-chunk streaming from Telegram
+    try:
+        async for chunk in bot.stream_media(file_id, offset=start):
+            await response.write(chunk)
+    except Exception as e:
+        print(f"Streaming Error: {e}")
+    
+    return response
+
+async def watch_page(request):
+    vid = request.match_info.get('vid')
+    data = await videos.find_one({"_id": ObjectId(vid)})
+    if not data: return web.Response(text="Not Found", status=404)
+    
+    stream_url = f"{APP_URL}/dl/{vid}"
+    return web.Response(text=PLAYER_HTML.format(title=data['title'], stream_url=stream_url), content_type='text/html')
+
+# --- BOT LOGIC ---
+
+@bot.on_message(filters.command("start") & filters.private)
+async def start(c, m):
+    await m.reply_text(f"👋 **হ্যালো {m.from_user.first_name}!**\n\nআমাকে ৪জিবি, ৫জিবি বা তার বেশি বড় যেকোনো ভিডিও ফাইল পাঠান। আমি সেটির অনলাইন প্লে লিঙ্ক দেব।")
+
+@bot.on_message((filters.video | filters.document) & filters.private)
+async def handle_media(c, m):
+    media = m.video or m.document
+    if m.document and "video" not in m.document.mime_type:
+        return # শুধু ভিডিও ফাইল গ্রহণ করবে
+
+    status = await m.reply_text("⏳ **লিঙ্ক তৈরি হচ্ছে...**")
+    
+    # ভিডিওটি লগ চ্যানেলে ফরওয়ার্ড করা (যাতে ফাইল সেভ থাকে)
+    try:
+        log_msg = await m.forward(LOG_CHANNEL)
+    except Exception:
+        return await status.edit("❌ বটকে আপনার লগ চ্যানেলে এডমিন করুন!")
+
+    # ডাটাবেসে তথ্য জমা রাখা
+    res = await videos.insert_one({
+        "title": media.file_name or "Untitled Video",
+        "file_id": media.file_id,
+        "file_size": media.file_size,
+        "user_id": m.from_user.id,
+        "msg_id": log_msg.id
+    })
+    
+    video_id = str(res.inserted_id)
+    watch_link = f"{APP_URL}/watch/{video_id}"
+    
+    await status.edit(
+        f"✅ **ভিডিও সফলভাবে প্রসেস হয়েছে!**\n\n🎬 **Online Player:** {watch_link}",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🎬 Watch / Download", url=watch_link)]])
+    )
+
+# --- START SERVER ---
+
+async def main():
+    await bot.start()
+    server = web.Application()
+    server.router.add_get("/", lambda r: web.Response(text="Streaming Bot Active!"))
+    server.router.add_get("/watch/{vid}", watch_page)
+    server.router.add_get("/dl/{vid}", stream_handler) # ডাউনলোড ও স্ট্রিম হ্যান্ডলার
+    
+    runner = web.AppRunner(server)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", int(os.environ.get("PORT", 10000)))
+    await site.start()
+    
+    print("🚀 Bot & Stream Server Started!")
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    # বটকে আলাদা থ্রেডে চালানো
-    threading.Thread(target=run_polling, daemon=True).start()
-    # ফ্ল্যাস্ক ওয়েব সার্ভার শুরু
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
