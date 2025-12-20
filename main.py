@@ -13,7 +13,7 @@ MONGO_URI = os.environ.get("MONGO_URI")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_PASSWORD_ENV = os.environ.get("ADMIN_PASS", "admin123")
 APP_URL_ENV = os.environ.get("APP_URL", "").rstrip('/')
-SECRET_KEY = os.environ.get("SECRET_KEY", "PREMIUM_ULTIMATE_MASTER_2025")
+SECRET_KEY = os.environ.get("SECRET_KEY", "EARN_PRO_ULTRA_2025")
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -30,7 +30,7 @@ if BOT_TOKEN:
 
 # Database Connection
 client = MongoClient(MONGO_URI)
-db = client['mega_earning_ultimate_v26']
+db = client['mega_earning_final_v30']
 users_collection = db['users']
 settings_collection = db['settings']
 withdraws_collection = db['withdrawals']
@@ -41,18 +41,18 @@ def get_settings():
         default = {
             "id": "config",
             "ad_count_per_click": 2,
-            "ad_interval": 3, # ডিফল্ট ৩ সেকেন্ড বিরতি
+            "ad_interval": 5, 
             "ad_rate": 0.50,
             "ref_commission": 2.00,
-            "min_withdraw": 10.00,
+            "min_withdraw": 50.00,
             "max_withdraw": 1000.00,
             "min_recharge": 20.00,
             "recharge_on": True,
             "daily_ad_limit": 50,
             "reset_hours": 24,
             "withdraw_methods": ["Bkash", "Nagad", "Rocket"],
-            "recharge_methods": ["GP", "Robi", "Banglalink"], # আনলিমিটেড সিম
-            "notice": "স্বাগতম! সঠিক VPN কানেক্ট করে কাজ শুরু করুন।",
+            "recharge_methods": ["GP", "Robi", "Airtel", "Banglalink"],
+            "notice": "সঠিক VPN (US/UK) কানেক্ট করে কাজ শুরু করুন।",
             "zone_id": "10341337",
             "vpn_on": False,
             "allowed_countries": "US,GB,CA",
@@ -65,7 +65,7 @@ def get_settings():
 def get_user_ip():
     return request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0]
 
-# --- TELEGRAM BOT LOGIC ---
+# --- TELEGRAM BOT ---
 if bot:
     @bot.message_handler(commands=['start'])
     def start_cmd(message):
@@ -73,63 +73,95 @@ if bot:
         name = message.from_user.first_name
         config = get_settings()
         ref_by = message.text.split()[1] if len(message.text.split()) > 1 else None
+        
         final_url = APP_URL_ENV if APP_URL_ENV else config.get('app_url')
+        if not final_url:
+            bot.reply_to(message, "❌ Admin hasn't set APP_URL in Render Variables.")
+            return
+
         dashboard_url = f"{final_url}/?id={uid}&name={name}"
         if ref_by: dashboard_url += f"&ref={ref_by}"
-        markup = telebot.types.InlineKeyboardMarkup()
-        markup.add(telebot.types.InlineKeyboardButton(text="🚀 ওপেন ড্যাশবোর্ড", url=dashboard_url))
-        bot.send_message(message.chat.id, f"👋 স্বাগতম {name}!\n💰 এড দেখে আয় শুরু করতে নিচের বাটনে ক্লিক করুন।", reply_markup=markup)
 
-# --- USER DASHBOARD (ULTRA PREMIUM) ---
+        markup = telebot.types.InlineKeyboardMarkup()
+        markup.add(telebot.types.InlineKeyboardButton(text="🚀 Open Dashboard", url=dashboard_url))
+        bot.send_message(message.chat.id, f"👋 Welcome {name}!\n💰 Watch ads and earn money instantly.", reply_markup=markup)
+
+# --- USER DASHBOARD (ULTRA HIGH QUALITY) ---
 USER_DASHBOARD = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Earn Pro | Dashboard</title>
+    <title>Dashboard | Earn Pro</title>
     <script src='//libtl.com/sdk.js' data-zone='{{ config.zone_id }}' data-sdk='show_{{ config.zone_id }}'></script>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
-        :root { --primary: #6366f1; --success: #10b981; --bg: #0b0f1a; --card: #161e31; --text: #f8fafc; --accent: #f59e0b; }
-        body { font-family: 'Outfit', sans-serif; background: var(--bg); color: var(--text); margin: 0; text-align: center; }
-        .notice-bar { background: linear-gradient(90deg, #f59e0b, #d97706); color: black; padding: 10px; font-weight: 700; font-size: 13px; }
-        .container { max-width: 450px; margin: auto; padding: 20px; }
-        .card { background: var(--card); border-radius: 30px; padding: 25px; box-shadow: 0 20px 40px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); }
-        .avatar { width: 80px; height: 80px; border-radius: 50%; border: 3px solid var(--primary); margin-bottom: 10px; }
-        .balance-card { background: linear-gradient(135deg, #6366f1, #4f46e5); border-radius: 20px; padding: 20px; margin: 20px 0; }
-        .btn { width: 100%; padding: 16px; border: none; border-radius: 18px; font-size: 16px; font-weight: 700; cursor: pointer; margin-bottom: 12px; color: white; transition: 0.3s; }
+        :root { --primary: #6366f1; --success: #10b981; --bg: #0b0f1a; --card: rgba(255, 255, 255, 0.05); }
+        body { font-family: 'Outfit', sans-serif; background: var(--bg); color: #fff; margin: 0; display: flex; flex-direction: column; align-items: center; }
+        .notice-bar { background: linear-gradient(90deg, #f59e0b, #d97706); color: #000; width: 100%; padding: 12px; font-weight: 700; font-size: 13px; text-align: center; }
+        .container { width: 100%; max-width: 440px; padding: 20px; box-sizing: border-box; }
+        
+        .glass-card { background: var(--card); backdrop-filter: blur(15px); border-radius: 30px; padding: 30px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 25px 50px rgba(0,0,0,0.5); text-align: center; }
+        .avatar { width: 80px; height: 80px; border-radius: 50%; border: 3px solid var(--primary); margin-bottom: 10px; padding: 3px; }
+        
+        .balance-card { background: linear-gradient(135deg, #6366f1, #a855f7); border-radius: 20px; padding: 25px; margin: 20px 0; box-shadow: 0 10px 20px rgba(99, 102, 241, 0.3); }
+        .balance-amount { font-size: 40px; font-weight: 700; }
+
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        .stat-box { background: rgba(255,255,255,0.03); padding: 15px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); }
+        .stat-box small { color: #94a3b8; font-size: 12px; }
+        .stat-box div { font-weight: 700; font-size: 18px; margin-top: 5px; }
+
+        .btn { width: 100%; padding: 18px; border: none; border-radius: 20px; font-size: 17px; font-weight: 700; cursor: pointer; transition: 0.3s; margin-bottom: 12px; color: #fff; }
         .btn-work { background: linear-gradient(to right, #10b981, #059669); }
-        .btn-withdraw { background: #334155; }
+        .btn-withdraw { background: #1e293b; }
         .btn-recharge { background: #8b5cf6; }
-        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); }
-        .modal-content { background: var(--card); margin: 15% auto; padding: 30px; width: 85%; max-width: 400px; border-radius: 25px; text-align: left; }
-        input, select { width: 100%; padding: 14px; margin: 10px 0; border-radius: 12px; background: #0b0f1a; color: white; border: 1px solid #334155; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .ref-box { background: rgba(0,0,0,0.3); padding: 15px; border-radius: 15px; font-size: 11px; word-break: break-all; color: #60a5fa; border: 1px solid #1e293b; margin-top: 15px; }
+        
+        /* Modal */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); }
+        .modal-content { background: #161e31; margin: 15% auto; padding: 30px; width: 85%; max-width: 380px; border-radius: 25px; border: 1px solid #334155; }
+        input, select { width: 100%; padding: 14px; margin: 10px 0; border-radius: 12px; background: #0b0f1a; color: #fff; border: 1px solid #334155; font-family: inherit; }
     </style>
 </head>
 <body>
     <div class="notice-bar">📢 {{ config.notice }}</div>
     <div class="container">
-        <div class="card">
-            <img src="https://ui-avatars.com/api/?name={{ user.name }}&background=6366f1&color=fff" class="avatar">
+        <div class="glass-card">
+            <img src="https://ui-avatars.com/api/?name={{ user.name }}&background=6366f1&color=fff&bold=true" class="avatar">
             <h2 style="margin:0;">{{ user.name }}</h2>
+            <p style="font-size:12px; color:#94a3b8; margin-top:5px;">ID: #{{ user.user_id }}</p>
+
             <div class="balance-card">
-                <small style="opacity:0.8;">Available Balance</small>
-                <div style="font-size: 38px; font-weight: 700;">৳ <span id="bal">{{ "%.2f"|format(user.balance) }}</span></div>
+                <small style="opacity:0.8;">Total Balance</small>
+                <div class="balance-amount">৳ <span id="bal">{{ "%.2f"|format(user.balance) }}</span></div>
             </div>
-            <button class="btn btn-work" id="workBtn" onclick="startWork()">WATCH ADS ({{ config.ad_count_per_click }})</button>
-            <button class="btn btn-withdraw" onclick="openM('withdrawModal')">CASH OUT</button>
-            {% if config.recharge_on %}<button class="btn btn-recharge" onclick="openM('rechargeModal')">MOBILE RECHARGE</button>{% endif %}
-            <p style="font-size:11px; color:#64748b;">Next Reset: <span id="timer" style="color:white;">--:--:--</span></p>
+
+            <div class="stats-grid">
+                <div class="stat-box"><small>Refers</small><div>{{ user.ref_count }}</div></div>
+                <div class="stat-box"><small>Ads Left</small><div id="daily_left">{{ config.daily_ad_limit - user.daily_views }}</div></div>
+            </div>
+
+            <button class="btn btn-work" id="workBtn" onclick="startAutoWork()">WATCH ADS ({{ config.ad_count_per_click }})</button>
+            <div style="display:flex; gap:10px;">
+                <button class="btn btn-withdraw" onclick="openM('withdrawModal')">WITHDRAW</button>
+                {% if config.recharge_on %}<button class="btn btn-recharge" onclick="openM('rechargeModal')">RECHARGE</button>{% endif %}
+            </div>
+
+            <div class="ref-box"><b>Referral Link:</b><br>{{ ref_url }}</div>
+            <p style="font-size:11px; color:#64748b; margin-top:15px;">Next Reset: <span id="timer" style="color:#fff;">--:--:--</span></p>
         </div>
     </div>
 
     <!-- Modals -->
     <div id="withdrawModal" class="modal">
         <div class="modal-content">
-            <h3>Withdrawal</h3>
+            <h3>Withdraw Money</h3>
             <select id="w_method">{% for m in config.withdraw_methods %}<option value="{{m}}">{{m}}</option>{% endfor %}</select>
-            <input type="number" id="w_amount" placeholder="Amount (৳)">
-            <input type="text" id="w_account" placeholder="Number">
+            <input type="number" id="w_amount" placeholder="Min ৳{{config.min_withdraw}}">
+            <input type="text" id="w_account" placeholder="Wallet Number">
             <button class="btn btn-work" onclick="submitReq('Withdraw', 'w_method', 'w_amount', 'w_account')">Confirm</button>
             <button class="btn btn-withdraw" onclick="closeM('withdrawModal')">Cancel</button>
         </div>
@@ -140,7 +172,7 @@ USER_DASHBOARD = """
             <h3>Mobile Recharge</h3>
             <select id="r_method">{% for r in config.recharge_methods %}<option value="{{r}}">{{r}}</option>{% endfor %}</select>
             <input type="number" id="r_amount" placeholder="Min ৳{{config.min_recharge}}">
-            <input type="text" id="r_account" placeholder="Mobile Number">
+            <input type="text" id="r_account" placeholder="Phone Number">
             <button class="btn btn-recharge" onclick="submitReq('Recharge', 'r_method', 'r_amount', 'r_account')">Request Recharge</button>
             <button class="btn btn-withdraw" onclick="closeM('rechargeModal')">Cancel</button>
         </div>
@@ -150,8 +182,8 @@ USER_DASHBOARD = """
     function openM(id) { document.getElementById(id).style.display = 'block'; }
     function closeM(id) { document.getElementById(id).style.display = 'none'; }
 
-    function startWork() {
-        let left = {{ config.daily_ad_limit }} - {{ user.daily_views }};
+    function startAutoWork() {
+        let left = parseInt(document.getElementById('daily_left').innerText);
         if(left <= 0) return alert("Daily limit reached!");
         
         let zid = "{{ config.zone_id }}";
@@ -160,19 +192,23 @@ USER_DASHBOARD = """
         
         if (typeof window['show_'+zid] === 'function') {
             document.getElementById('workBtn').disabled = true;
-            document.getElementById('workBtn').innerText = "Loading Ads...";
+            document.getElementById('workBtn').innerText = "Loading Ad 1...";
             
             let adsDone = 0;
-            let adLoop = setInterval(() => {
+            function showNextAd() {
                 if (adsDone < totalAds) {
                     window['show_'+zid]();
                     adsDone++;
-                } else {
-                    clearInterval(adLoop);
-                    finishWork();
+                    if (adsDone < totalAds) {
+                        document.getElementById('workBtn').innerText = "Loading Ad " + (adsDone + 1) + "...";
+                        setTimeout(showNextAd, interval);
+                    } else {
+                        finishWork();
+                    }
                 }
-            }, interval); 
-        } else { alert("Error loading ads. Disable AdBlocker."); }
+            }
+            showNextAd();
+        } else { alert("AdBlocker detected! Please disable it."); }
     }
 
     function finishWork() {
@@ -184,7 +220,7 @@ USER_DASHBOARD = """
             document.getElementById('workBtn').innerText = "WATCH ADS ({{ config.ad_count_per_click }})";
             if(data.success) {
                 document.getElementById('bal').innerText = data.new_balance.toFixed(2);
-                location.reload(); // Refresh to update limit
+                document.getElementById('daily_left').innerText = data.daily_left;
             }
         });
     }
@@ -214,59 +250,49 @@ USER_DASHBOARD = """
 </html>
 """
 
-# --- MASTER ADMIN PANEL ---
+# --- ADMIN PANEL (HIGH QUALITY DESIGN) ---
 ADMIN_PANEL = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Admin Control</title>
+    <title>Admin Master | Earn Pro</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { font-family: 'Outfit', sans-serif; background: #0b0f1a; color: white; padding: 20px; }
+        body { font-family: 'Outfit', sans-serif; background: #0b0f1a; color: #fff; padding: 20px; }
+        .header { background: linear-gradient(135deg, #6366f1, #a855f7); padding: 30px; border-radius: 20px; text-align: center; margin-bottom: 30px; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }
         .card { background: #161e31; padding: 25px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); }
-        input, textarea, select { width: 100%; padding: 12px; margin: 8px 0; border-radius: 10px; background: #0b0f1a; color: white; border: 1px solid #334155; box-sizing: border-box; }
-        button { background: #10b981; color: white; border: none; padding: 12px; width: 100%; border-radius: 10px; cursor: pointer; font-weight: bold; }
+        h3 { color: #818cf8; margin-top: 0; border-bottom: 1px solid #334155; padding-bottom: 10px; }
+        input, textarea, select { width: 100%; padding: 12px; margin: 8px 0; border-radius: 10px; background: #0b0f1a; color: #fff; border: 1px solid #334155; box-sizing: border-box; }
+        button { background: #10b981; color: #fff; border: none; padding: 14px; width: 100%; border-radius: 12px; cursor: pointer; font-weight: bold; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
-        th, td { padding: 10px; border-bottom: 1px solid #334155; }
+        th, td { padding: 12px; border-bottom: 1px solid #334155; text-align: left; }
+        .btn-pay { background: #ef4444; width: auto; padding: 5px 12px; font-size: 12px; }
     </style>
 </head>
 <body>
-    <h1 style="text-align:center;">👑 Master Admin Panel</h1>
+    <div class="header"><h1>👑 Master Admin Control</h1></div>
     <div class="grid">
         <div class="card">
-            <h3>⚙️ App Settings</h3>
+            <h3>⚙️ Settings</h3>
             <form method="POST" action="/admin/save_settings">
                 Notice: <textarea name="notice">{{config.notice}}</textarea>
                 Ad Rate: <input name="ad_rate" step="0.01" value="{{config.ad_rate}}">
                 Ads Per Click: <input name="ad_count_per_click" type="number" value="{{config.ad_count_per_click}}">
-                
-                <b>Ad Load Interval (Seconds):</b>
-                <select name="ad_interval">
-                    {% for i in range(1, 16) %}
-                    <option value="{{i}}" {% if config.ad_interval == i %}selected{% endif %}>{{i}} Seconds</option>
-                    {% endfor %}
-                </select>
-
+                Ad Interval (Sec): <input name="ad_interval" type="number" value="{{config.ad_interval}}">
                 Daily Limit: <input name="daily_ad_limit" type="number" value="{{config.daily_ad_limit}}">
-                Min Withdraw: <input name="min_withdraw" value="{{config.min_withdraw}}">
-                Min Recharge: <input name="min_recharge" value="{{config.min_recharge}}">
-                
-                <b>Withdrawal Methods:</b>
-                <input name="withdraw_methods" value="{{ config.withdraw_methods|join(', ') }}">
-                
-                <b>Mobile Recharge Methods (Unlimited Sim Names):</b>
-                <input name="recharge_methods" value="{{ config.recharge_methods|join(', ') }}" placeholder="GP, Robi, Airtel...">
-                
                 Zone ID: <input name="zone_id" value="{{config.zone_id}}">
-                <button type="submit">Update Everything</button>
+                Withdraw Methods: <input name="withdraw_methods" value="{{ config.withdraw_methods|join(', ') }}">
+                Sim Names: <input name="recharge_methods" value="{{ config.recharge_methods|join(', ') }}">
+                <button type="submit">Save All Settings</button>
             </form>
         </div>
         <div class="card">
-            <h3>💰 Payment Requests</h3>
+            <h3>💰 Pending Requests</h3>
             <table>
-                <tr><th>User/Type</th><th>Amount</th><th>Number</th><th>Action</th></tr>
+                <tr><th>User/Type</th><th>Amount</th><th>Action</th></tr>
                 {% for w in withdraws %}
-                <tr><td>{{w.name}}<br><small>{{w.type}} ({{w.method}})</small></td><td>৳{{w.amount}}</td><td>{{w.account}}</td><td><a href="/admin/pay/{{w._id}}" style="color:#ef4444;">Paid</a></td></tr>
+                <tr><td>{{w.name}}<br><small>{{w.type}} - {{w.account}}</small></td><td>৳{{w.amount}}</td><td><a href="/admin/pay/{{w._id}}"><button class="btn-pay">Paid</button></a></td></tr>
                 {% endfor %}
             </table>
         </div>
@@ -280,14 +306,15 @@ ADMIN_PANEL = """
                 <tr>
                     <form action="/admin/edit_user/{{u.user_id}}" method="POST">
                     <td>{{u.name}}<br><small>#{{u.user_id}}</small></td>
-                    <td><input name="balance" value="{{u.balance}}" style="width:80px;"></td>
-                    <td><button type="submit" style="padding:5px;">Update</button></td>
+                    <td><input name="balance" value="{{u.balance}}" style="width:70px;"></td>
+                    <td><button type="submit" style="padding:5px; width:auto;">Save</button></td>
                     </form>
                 </tr>
                 {% endfor %}
             </table>
         </div>
     </div>
+    <br><center><a href="/logout" style="color:red; text-decoration:none; font-weight:bold;">Logout</a></center>
 </body>
 </html>
 """
@@ -296,7 +323,7 @@ ADMIN_PANEL = """
 @app.route('/')
 def home():
     user_id, name, ref_by = request.args.get('id'), request.args.get('name', 'User'), request.args.get('ref')
-    if not user_id: return "<h1>Join via Bot first!</h1>", 403
+    if not user_id: return "<h1>Access via Telegram Bot!</h1>", 403
     
     config = get_settings()
     user = users_collection.find_one({"user_id": user_id})
@@ -311,7 +338,7 @@ def home():
             users_collection.update_one({"user_id": ref_by}, {"$inc": {"balance": config['ref_commission'], "ref_count": 1}})
         user = user_data
     
-    # Auto Reset Check
+    # Auto Reset Logic
     last_reset = user.get('last_reset_time', now)
     next_reset = last_reset + reset_delta
     if now >= next_reset:
@@ -319,7 +346,8 @@ def home():
         user['daily_views'] = 0
         next_reset = now + reset_delta
 
-    return render_template_string(USER_DASHBOARD, user=user, config=config, next_reset=next_reset.strftime('%Y-%m-%dT%H:%M:%S'))
+    ref_link = f"https://t.me/{BOT_USERNAME}?start={user_id}"
+    return render_template_string(USER_DASHBOARD, user=user, config=config, ref_url=ref_link, next_reset=next_reset.strftime('%Y-%m-%dT%H:%M:%S'))
 
 @app.route('/update_balance', methods=['POST'])
 def update_balance():
@@ -329,7 +357,7 @@ def update_balance():
     if user['daily_views'] >= config['daily_ad_limit']: return jsonify({"success": False, "message": "Limit Reached!"})
     users_collection.update_one({"user_id": uid}, {"$inc": {"balance": config['ad_rate'], "daily_views": 1}})
     u = users_collection.find_one({"user_id": uid})
-    return jsonify({"success": True, "new_balance": u['balance']})
+    return jsonify({"success": True, "new_balance": u['balance'], "daily_left": config['daily_ad_limit'] - u['daily_views']})
 
 @app.route('/request_payment', methods=['POST'])
 def request_payment():
@@ -351,6 +379,7 @@ def admin():
             session['logged'] = True
             return redirect(url_for('admin'))
     if not session.get('logged'): return '<body style="background:#0b0f1a;color:white;text-align:center;padding:100px;"><h2>Admin Login</h2><form method="POST"><input name="pass" type="password" style="padding:10px;"><br><br><button type="submit">Login</button></form></body>'
+    
     users = list(users_collection.find().limit(50))
     withdraws = list(withdraws_collection.find({"status": "Pending"}))
     return render_template_string(ADMIN_PANEL, config=config, users=users, withdraws=withdraws)
@@ -359,8 +388,6 @@ def admin():
 def save_settings():
     if session.get('logged'):
         try:
-            w_methods = [m.strip() for m in request.form.get('withdraw_methods').split(',')]
-            r_methods = [r.strip() for r in request.form.get('recharge_methods').split(',')]
             settings_collection.update_one({"id": "config"}, {"$set": {
                 "notice": request.form.get('notice'),
                 "ad_rate": float(request.form.get('ad_rate')),
@@ -369,8 +396,8 @@ def save_settings():
                 "min_withdraw": float(request.form.get('min_withdraw')),
                 "min_recharge": float(request.form.get('min_recharge')),
                 "daily_ad_limit": int(request.form.get('daily_ad_limit')),
-                "withdraw_methods": w_methods,
-                "recharge_methods": r_methods,
+                "withdraw_methods": [m.strip() for m in request.form.get('withdraw_methods').split(',')],
+                "recharge_methods": [r.strip() for r in request.form.get('recharge_methods').split(',')],
                 "zone_id": request.form.get('zone_id')
             }}, upsert=True)
         except: pass
