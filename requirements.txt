@@ -1,5 +1,7 @@
 pyrogram
 tgcrypto
+fastapi
+uvicorn
 motor
-dnspython
-aiohttp
+pymongo
+python-dotenv
